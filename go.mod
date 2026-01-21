@@ -10,17 +10,23 @@ require (
 	github.com/flywave/go-geo v0.0.0-20250314091853-e818cb9de299
 	github.com/flywave/go-geoid v0.0.0-20220306024153-21126c4758a2
 	github.com/flywave/go-gpx v1.2.2-0.20211027141055-7fa376dde073
+	github.com/flywave/go-mapbox v0.0.0-00010101000000-000000000000
 	github.com/flywave/go-stl v0.0.0-20250818070638-f2c3dee7ad76
 	github.com/flywave/go-tin v0.0.0-00010101000000-000000000000
 	github.com/flywave/go3d v0.0.0-20250816053852-aed5d825659f
 )
 
 require (
+	github.com/flywave/go-cog v0.0.0-20250314092301-4673589220b8 // indirect
 	github.com/flywave/go-geom v0.0.0-20250607125323-f685bf20f12c // indirect
 	github.com/flywave/go-geos v0.0.0-20220312005430-b3e54ee96ed7 // indirect
 	github.com/flywave/go-proj v0.0.0-20211220121303-46dc797a5cd0 // indirect
+	github.com/flywave/imaging v1.6.5 // indirect
+	github.com/flywave/webp v1.1.2 // indirect
 	github.com/go-test/deep v1.0.7 // indirect
 	github.com/golang/freetype v0.0.0-20170609003504-e2365dfdc4a0 // indirect
+	github.com/google/tiff v0.0.0-20161109161721-4b31f3041d9a // indirect
+	github.com/hhrutter/lzw v0.0.0-20190829144645-6f07a24e8650 // indirect
 	golang.org/x/image v0.28.0 // indirect
 	golang.org/x/net v0.40.0 // indirect
 	golang.org/x/text v0.26.0 // indirect
@@ -41,3 +47,5 @@ replace github.com/flywave/go-xslt => ../go-xslt
 replace github.com/flywave/go-geos => ../go-geos
 
 replace github.com/flywave/go-tin => ../go-tin
+
+replace github.com/flywave/go-mapbox => ../go-mapbox
