@@ -11,8 +11,6 @@ github.com/flywave/gltf v0.20.4-0.20250726101904-8f7bf4ed58d3 h1:/TH3FRKZaKbGBO0
 github.com/flywave/gltf v0.20.4-0.20250726101904-8f7bf4ed58d3/go.mod h1:tbjmh7jontxFNgxC/OXIw31LSHW/aDKac4fQIg1ubQQ=
 github.com/flywave/go-gpx v1.2.2-0.20211027141055-7fa376dde073 h1:KCBVl4L/mMSifZngABssSfVHYGic5mxCFqPV0Eek5aY=
 github.com/flywave/go-gpx v1.2.2-0.20211027141055-7fa376dde073/go.mod h1:99GDcGrSIKJFM7Zd7yHsZP8OOP0X0s36yQmviMAOBl4=
-github.com/flywave/go-obj v0.0.0-20210526030750-7674effc90f7 h1:voEDsqS6skCwuM7ZphbxrsKd7DqtpMRlDUsmO5Tl1T0=
-github.com/flywave/go-obj v0.0.0-20210526030750-7674effc90f7/go.mod h1:+yO+PGuuoa4ti3kBBXNrtmlQ2KR1WlfQMPHWOMObcnU=
 github.com/flywave/go-stl v0.0.0-20250818070638-f2c3dee7ad76 h1:zwgkaN3wUdOg/tZF+buz6UJsFU8paJp96nGaO6tZMDo=
 github.com/flywave/go-stl v0.0.0-20250818070638-f2c3dee7ad76/go.mod h1:cBGuHNXnPHNc4PH+uqkqPoTvdym4wpTXNZnVOnHHbYs=
 github.com/flywave/go3d v0.0.0-20210529142521-14eb5aca1290/go.mod h1:QbQZlarSgCPYFAmoTduiDUd4JCnolimXUswTAnSrFWY=
