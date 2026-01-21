@@ -5,6 +5,8 @@ import (
 	"github.com/flywave/go-geo"
 	draw "github.com/flywave/go-static-mesh/draw"
 	vec2d "github.com/flywave/go3d/float64/vec2"
+	vec3d "github.com/flywave/go3d/float64/vec3"
+	"image"
 	"math"
 	"time"
 )
@@ -119,6 +121,78 @@ func (b *Builder) SetCloseMesh(close bool, thickness float64) {
 
 func (b *Builder) SetTileErrorHandler(handler TileErrorHandler) {
 	b.tileErrorHandler = handler
+}
+
+func (b *Builder) GenerateTexture() (*Mesh, error) {
+	if b.imageryProvider == nil {
+		return nil, fmt.Errorf("imagery provider not set")
+	}
+
+	if b.bounds.Min[0] >= b.bounds.Max[0] || b.bounds.Min[1] >= b.bounds.Max[1] {
+		return nil, fmt.Errorf("bounds not set properly")
+	}
+
+	zoom, err := b.determineZoom()
+	if err != nil {
+		return nil, fmt.Errorf("failed to determine zoom: %w", err)
+	}
+
+	provider, ok := b.imageryProvider.(interface {
+		GetImageTile(coord [3]int) (image.Image, error)
+	})
+	if !ok {
+		return nil, fmt.Errorf("imagery provider does not support image tiles")
+	}
+
+	fetcher := NewTileFetcher(provider)
+	tiles, err := fetcher.FetchTiles(b.bounds, zoom, b.srs)
+	if err != nil {
+		return nil, fmt.Errorf("failed to fetch tiles: %w", err)
+	}
+
+	if len(tiles) == 0 {
+		return nil, fmt.Errorf("no tiles fetched")
+	}
+
+	tileSize := 256
+	for _, tile := range tiles {
+		if tile.Image != nil {
+			tileSize = tile.Image.Bounds().Dx()
+			break
+		}
+	}
+
+	generator := NewTextureGenerator(tileSize)
+	texture, err := generator.Generate(tiles, b.bounds, nil)
+	if err != nil {
+		return nil, fmt.Errorf("failed to generate texture: %w", err)
+	}
+
+	texture = generator.DrawGeoObjects(texture, b.geoData, b.bounds, b.srs)
+
+	textureBounds := generator.CalculateTextureBounds([]vec3d.T{
+		{b.bounds.Min[0], b.bounds.Min[1], 0},
+		{b.bounds.Max[0], b.bounds.Min[1], 0},
+		{b.bounds.Max[0], b.bounds.Max[1], 0},
+		{b.bounds.Min[0], b.bounds.Max[1], 0},
+	})
+
+	mesh := &Mesh{
+		Texture: texture,
+		Bounds:  b.bounds,
+		Srs:     b.srs,
+	}
+
+	if texture != nil {
+		mesh.UVs = generator.CalculateUVs([]vec3d.T{
+			{b.bounds.Min[0], b.bounds.Min[1], 0},
+			{b.bounds.Max[0], b.bounds.Min[1], 0},
+			{b.bounds.Max[0], b.bounds.Max[1], 0},
+			{b.bounds.Min[0], b.bounds.Max[1], 0},
+		}, textureBounds)
+	}
+
+	return mesh, nil
 }
 
 func (b *Builder) BuildForPrint() (*Mesh, error) {
