@@ -50,7 +50,7 @@ func (f *TileFetcher) FetchTiles(bounds vec2d.Rect, zoom int, srs geo.Proj) ([]*
 			defer wg.Done()
 
 			img, err := f.provider.GetImageTile(c)
-			if err != nil {
+			if err != nil || img == nil {
 				log.Printf("Failed to fetch tile %d/%d/%d: %v", c[0], c[1], c[2], err)
 				tilesCh <- struct {
 					index int

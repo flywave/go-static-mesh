@@ -119,6 +119,10 @@ func (m *TileMerger) MergeTiles(tiles []*TextureTile, bounds vec2d.Rect) (image.
 	dc := gg.NewContextForRGBA(result)
 
 	for _, tile := range tiles {
+		if tile.Image == nil {
+			continue
+		}
+
 		x := (tile.X - minX) * m.tileSize
 		y := (tile.Y - minY) * m.tileSize
 
