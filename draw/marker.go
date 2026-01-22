@@ -209,12 +209,26 @@ func (m *Marker) Draw(gc *gg.Context, trans *Transformer) {
 }
 
 func (m *Marker) ExtrudeToMesh(meshBuilder interface{}, height float64) error {
+	return m.ExtrudeToMeshWithTerrain(meshBuilder, height, nil)
+}
+
+func (m *Marker) ExtrudeToMeshWithTerrain(meshBuilder interface{}, height float64, terrain TerrainMesh) error {
 	if height <= 0 {
 		height = m.Height
 	}
 
 	if height <= 0 || m.Size <= 0 {
 		return nil
+	}
+
+	getZ := func(pos vec2d.T) float64 {
+		if terrain != nil {
+			terrainHeight := sampleTerrainHeight(pos, terrain)
+			if terrainHeight > 0 {
+				return terrainHeight + height
+			}
+		}
+		return height
 	}
 
 	type meshWithVertices interface {
@@ -241,24 +255,27 @@ func (m *Marker) ExtrudeToMesh(meshBuilder interface{}, height float64) error {
 		x := arcRadius * math.Cos(angle)
 		y := arcCenterY + arcRadius*math.Sin(angle)
 
-		topVertices[i] = mesh.AppendVertex(m.Position[0]+x, m.Position[1]+y, height)
-		bottomVertices[i] = mesh.AppendVertex(m.Position[0]+x, m.Position[1]+y, 0)
+		pos := vec2d.T{m.Position[0] + x, m.Position[1] + y}
+		topVertices[i] = mesh.AppendVertex(pos[0], pos[1], getZ(pos))
+		bottomVertices[i] = mesh.AppendVertex(pos[0], pos[1], 0)
 	}
 
 	tipIndex := arcSegments + 1
-	topTipZ := height - m.TipOffset
+	topTipZ := getZ(m.Position)
 	bottomTipZ := -m.TipOffset
 	topVertices[tipIndex] = mesh.AppendVertex(m.Position[0], m.Position[1], topTipZ)
 	bottomVertices[tipIndex] = mesh.AppendVertex(m.Position[0], m.Position[1], bottomTipZ)
 
 	for i := 0; i < arcSegments; i++ {
-		topTipZ := height - m.TipOffset
-		bottomTipZ := -m.TipOffset
 		topTipIdx := topVertices[tipIndex]
 		bottomTipIdx := bottomVertices[tipIndex]
 		if i == 0 {
-			topTipIdx = mesh.AppendVertex(m.Position[0], m.Position[1], topTipZ)
-			bottomTipIdx = mesh.AppendVertex(m.Position[0], m.Position[1], bottomTipZ)
+			angle := startAngle + float64(0)/float64(arcSegments)*(endAngle-startAngle)
+			x := arcRadius * math.Cos(angle)
+			y := arcCenterY + arcRadius*math.Sin(angle)
+			pos := vec2d.T{m.Position[0] + x, m.Position[1] + y}
+			topTipIdx = mesh.AppendVertex(pos[0], pos[1], getZ(pos))
+			bottomTipIdx = mesh.AppendVertex(pos[0], pos[1], bottomTipZ)
 		}
 		mesh.AppendTriangle(topTipIdx, topVertices[i], topVertices[i+1])
 		mesh.AppendTriangle(bottomTipIdx, bottomVertices[i+1], bottomVertices[i])

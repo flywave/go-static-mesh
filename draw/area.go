@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"image"
 	"image/color"
+	"math"
 	"strconv"
 	"strings"
 
@@ -14,6 +15,10 @@ import (
 	"github.com/flywave/go-static-mesh/utils"
 	"github.com/flywave/go-tesselator"
 )
+
+type TerrainMesh interface {
+	GetVertices() []float64
+}
 
 type Area struct {
 	MapObject
@@ -129,12 +134,26 @@ func (p *Area) Draw(gc *gg.Context, trans *Transformer) {
 }
 
 func (a *Area) ExtrudeToMesh(meshBuilder interface{}, height float64) error {
+	return a.ExtrudeToMeshWithTerrain(meshBuilder, height, nil)
+}
+
+func (a *Area) ExtrudeToMeshWithTerrain(meshBuilder interface{}, height float64, terrain TerrainMesh) error {
 	if len(a.Positions) < 3 {
 		return nil
 	}
 
 	if height <= 0 {
 		height = a.Height
+	}
+
+	getZ := func(pos vec2d.T) float64 {
+		if terrain != nil {
+			terrainHeight := sampleTerrainHeight(pos, terrain)
+			if terrainHeight > 0 {
+				return terrainHeight + height
+			}
+		}
+		return height
 	}
 
 	type meshWithVertices interface {
@@ -148,7 +167,7 @@ func (a *Area) ExtrudeToMesh(meshBuilder interface{}, height float64) error {
 	}
 
 	topIndices, _, err := tesselator.Tesselate([]tesselator.Contour{
-		makeContourFromPositions(a.Positions, height),
+		makeContourFromPositions(a.Positions, getZ(a.Positions[0])),
 	}, tesselator.WindingRuleOdd)
 	if err != nil {
 		return fmt.Errorf("failed to triangulate top area: %w", err)
@@ -156,7 +175,7 @@ func (a *Area) ExtrudeToMesh(meshBuilder interface{}, height float64) error {
 
 	topVertexStart := uint32(0)
 	for _, pos := range a.Positions {
-		m.AppendVertex(pos[0], pos[1], height)
+		m.AppendVertex(pos[0], pos[1], getZ(pos))
 	}
 
 	for i := 0; i < len(topIndices); i += 3 {
@@ -195,6 +214,70 @@ func (a *Area) ExtrudeToMesh(meshBuilder interface{}, height float64) error {
 	}
 
 	return nil
+}
+
+func sampleTerrainHeight(pos vec2d.T, terrain TerrainMesh) float64 {
+	if terrain == nil {
+		return 0
+	}
+
+	vertices := terrain.GetVertices()
+	if len(vertices) == 0 {
+		return 0
+	}
+
+	sampleCount := 0
+	totalHeight := 0.0
+	radius := 100.0
+
+	for i := 0; i < len(vertices); i += 3 {
+		vx := vertices[i]
+		vy := vertices[i+1]
+		vz := vertices[i+2]
+
+		dist := math.Sqrt(math.Pow(vx-pos[0], 2) + math.Pow(vy-pos[1], 2))
+
+		if dist <= radius {
+			totalHeight += vz
+			sampleCount++
+		}
+	}
+
+	if sampleCount == 0 {
+		radius *= 2.0
+		for i := 0; i < len(vertices); i += 3 {
+			vx := vertices[i]
+			vy := vertices[i+1]
+			vz := vertices[i+2]
+
+			dist := math.Sqrt(math.Pow(vx-pos[0], 2) + math.Pow(vy-pos[1], 2))
+
+			if dist <= radius {
+				totalHeight += vz
+				sampleCount++
+			}
+		}
+	}
+
+	if sampleCount == 0 {
+		minDist := math.Inf(1)
+		minHeight := 0.0
+		for i := 0; i < len(vertices); i += 3 {
+			vx := vertices[i]
+			vy := vertices[i+1]
+			vz := vertices[i+2]
+
+			dist := math.Sqrt(math.Pow(vx-pos[0], 2) + math.Pow(vy-pos[1], 2))
+
+			if dist < minDist {
+				minDist = dist
+				minHeight = vz
+			}
+		}
+		return minHeight
+	}
+
+	return totalHeight / float64(sampleCount)
 }
 
 func makeContourFromPositions(positions []vec2d.T, height float64) tesselator.Contour {

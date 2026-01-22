@@ -168,12 +168,26 @@ func (m *Circle) Draw(gc *gg.Context, trans *Transformer) {
 }
 
 func (c *Circle) ExtrudeToMesh(meshBuilder interface{}, height float64) error {
+	return c.ExtrudeToMeshWithTerrain(meshBuilder, height, nil)
+}
+
+func (c *Circle) ExtrudeToMeshWithTerrain(meshBuilder interface{}, height float64, terrain TerrainMesh) error {
 	if height <= 0 {
 		height = c.Height
 	}
 
 	if height <= 0 || c.Radius <= 0 {
 		return nil
+	}
+
+	getZ := func(pos vec2d.T) float64 {
+		if terrain != nil {
+			terrainHeight := sampleTerrainHeight(pos, terrain)
+			if terrainHeight > 0 {
+				return terrainHeight + height
+			}
+		}
+		return height
 	}
 
 	type meshWithVertices interface {
@@ -195,7 +209,7 @@ func (c *Circle) ExtrudeToMesh(meshBuilder interface{}, height float64) error {
 		x := c.Position[0] + c.Radius*math.Cos(angle)
 		y := c.Position[1] + c.Radius*math.Sin(angle)
 
-		topVertices[i] = m.AppendVertex(x, y, height)
+		topVertices[i] = m.AppendVertex(x, y, getZ(vec2d.T{x, y}))
 		bottomVertices[i] = m.AppendVertex(x, y, 0)
 	}
 

@@ -140,12 +140,26 @@ func (p *Path) Draw(gc *gg.Context, trans *Transformer) {
 }
 
 func (p *Path) ExtrudeToMesh(meshBuilder interface{}, height float64) error {
+	return p.ExtrudeToMeshWithTerrain(meshBuilder, height, nil)
+}
+
+func (p *Path) ExtrudeToMeshWithTerrain(meshBuilder interface{}, height float64, terrain TerrainMesh) error {
 	if len(p.Positions) < 2 {
 		return nil
 	}
 
 	if height <= 0 {
 		height = p.Height
+	}
+
+	getZ := func(pos vec2d.T) float64 {
+		if terrain != nil {
+			terrainHeight := sampleTerrainHeight(pos, terrain)
+			if terrainHeight > 0 {
+				return terrainHeight + height
+			}
+		}
+		return height
 	}
 
 	type meshWithVertices interface {
@@ -177,10 +191,10 @@ func (p *Path) ExtrudeToMesh(meshBuilder interface{}, height float64) error {
 		offsetX := (p.Weight / 2.0) * perpX
 		offsetY := (p.Weight / 2.0) * perpY
 
-		v0 := m.AppendVertex(start[0]+offsetX, start[1]+offsetY, height)
-		v1 := m.AppendVertex(end[0]+offsetX, end[1]+offsetY, height)
-		v2 := m.AppendVertex(end[0]-offsetX, end[1]-offsetY, height)
-		v3 := m.AppendVertex(start[0]-offsetX, start[1]-offsetY, height)
+		v0 := m.AppendVertex(start[0]+offsetX, start[1]+offsetY, getZ(start))
+		v1 := m.AppendVertex(end[0]+offsetX, end[1]+offsetY, getZ(end))
+		v2 := m.AppendVertex(end[0]-offsetX, end[1]-offsetY, getZ(end))
+		v3 := m.AppendVertex(start[0]-offsetX, start[1]-offsetY, getZ(start))
 
 		v4 := m.AppendVertex(start[0]+offsetX, start[1]+offsetY, 0)
 		v5 := m.AppendVertex(end[0]+offsetX, end[1]+offsetY, 0)
