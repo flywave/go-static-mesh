@@ -72,7 +72,7 @@ func (e *GPXPathExtruder) ExtrudePathToTerrain(path *draw.Path, options *GPXExtr
 		return fmt.Errorf("failed to perform boolean operation: %w", err)
 	}
 
-	if resultMesh == nil {
+	if resultMesh == nil || len(resultMesh.Vertices) == 0 {
 		return nil
 	}
 
@@ -104,6 +104,7 @@ func (e *GPXPathExtruder) extrudePathWithTerrainSampling(path *draw.Path, mesh *
 		width = 2.0
 	}
 
+	isTrench := options.Operation == BSPOperationSubtraction
 	for i := 0; i < len(sampledPositions)-1; i++ {
 		start := sampledPositions[i]
 		end := sampledPositions[i+1]
@@ -122,15 +123,20 @@ func (e *GPXPathExtruder) extrudePathWithTerrainSampling(path *draw.Path, mesh *
 		offsetX := (width / 2.0) * perpX
 		offsetY := (width / 2.0) * perpY
 
+		depthOffset := options.Depth
+		if isTrench {
+			depthOffset = -options.Depth
+		}
+
 		v1 := vec3d.T{start[0] + offsetX, start[1] + offsetY, start[2]}
-		v2 := vec3d.T{start[0] + offsetX, start[1] + offsetY, start[2] + options.Depth}
+		v2 := vec3d.T{start[0] + offsetX, start[1] + offsetY, start[2] + depthOffset}
 		v3 := vec3d.T{end[0] + offsetX, end[1] + offsetY, start[2]}
-		v4 := vec3d.T{end[0] + offsetX, end[1] + offsetY, start[2] + options.Depth}
+		v4 := vec3d.T{end[0] + offsetX, end[1] + offsetY, start[2] + depthOffset}
 
 		v5 := vec3d.T{start[0] - offsetX, start[1] - offsetY, start[2]}
-		v6 := vec3d.T{start[0] - offsetX, start[1] - offsetY, start[2] + options.Depth}
+		v6 := vec3d.T{start[0] - offsetX, start[1] - offsetY, start[2] + depthOffset}
 		v7 := vec3d.T{end[0] - offsetX, end[1] - offsetY, start[2]}
-		v8 := vec3d.T{end[0] - offsetX, end[1] - offsetY, start[2] + options.Depth}
+		v8 := vec3d.T{end[0] - offsetX, end[1] - offsetY, start[2] + depthOffset}
 
 		baseIdx := uint32(len(mesh.Vertices))
 

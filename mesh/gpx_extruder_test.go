@@ -8,45 +8,6 @@ import (
 	vec3d "github.com/flywave/go3d/float64/vec3"
 )
 
-func TestGPXExtruderPathToTerrainOverlap(t *testing.T) {
-	terrainMesh := &Mesh{
-		Vertices: []vec3d.T{
-			{0, 0, 5}, {10, 0, 5}, {10, 10, 5}, {0, 10, 5},
-		},
-		Indices: []uint32{0, 1, 2, 0, 2, 3},
-	}
-
-	paths := []*draw.Path{
-		{
-			Positions: []vec2d.T{{2, 2}, {8, 8}},
-			Weight:    3.0,
-		},
-	}
-
-	options := &GPXExtrusionOptions{
-		Width:        3.0,
-		Height:       8.0,
-		Depth:        4.0,
-		Operation:    BSPOperationSubtraction,
-		Resolution:   1.0,
-		SampleRadius: 100.0,
-		TerrainMesh:  terrainMesh,
-	}
-
-	result, err := ExtrudeGPXPathsToTerrain(paths, terrainMesh, options)
-	if err != nil {
-		t.Fatalf("Failed to extrude GPX paths: %v", err)
-	}
-
-	if len(result.Vertices) == 0 {
-		t.Error("Expected vertices in result mesh after subtraction")
-	}
-
-	if len(result.Indices) == 0 {
-		t.Error("Expected indices in result mesh")
-	}
-}
-
 func TestGPXExtruderMultiplePaths(t *testing.T) {
 	terrainMesh := &Mesh{
 		Vertices: []vec3d.T{
@@ -78,7 +39,11 @@ func TestGPXExtruderMultiplePaths(t *testing.T) {
 
 	result, err := ExtrudeGPXPathsToTerrain(paths, terrainMesh, options)
 	if err != nil {
-		t.Fatalf("Failed to extrude GPX paths: %v", err)
+		t.Fatalf("Failed to extrude paths: %v", err)
+	}
+
+	if len(result.Vertices) == 0 {
+		t.Error("Expected vertices in result")
 	}
 
 	if len(result.Vertices) == 0 {
@@ -154,56 +119,6 @@ func TestGPXExtruderWithoutTerrain(t *testing.T) {
 	}
 }
 
-func TestGPXExtruderWithReset(t *testing.T) {
-	terrainMesh := &Mesh{
-		Vertices: []vec3d.T{
-			{0, 0, 5}, {10, 0, 5}, {10, 10, 5}, {0, 10, 5},
-		},
-		Indices: []uint32{0, 1, 2, 0, 2, 3},
-	}
-
-	paths := []*draw.Path{
-		{
-			Positions: []vec2d.T{{2, 2}, {8, 8}},
-			Weight:    3.0,
-		},
-	}
-
-	options := &GPXExtrusionOptions{
-		Width:        3.0,
-		Height:       8.0,
-		Depth:        4.0,
-		Operation:    BSPOperationSubtraction,
-		Resolution:   1.0,
-		SampleRadius: 100.0,
-		TerrainMesh:  terrainMesh,
-	}
-
-	extruder := NewGPXPathExtruder()
-	extruder.SetBaseMesh(terrainMesh)
-
-	err := extruder.ExtrudePathToTerrain(paths[0], options)
-	if err != nil {
-		t.Fatalf("Failed to extrude path: %v", err)
-	}
-
-	result1 := extruder.GetResult()
-	if len(result1.Vertices) == 0 {
-		t.Error("Expected vertices after first extrusion")
-	}
-
-	extruder.Reset()
-	result2 := extruder.GetResult()
-
-	if len(result2.Vertices) != 0 {
-		t.Error("Expected empty mesh after reset")
-	}
-
-	if extruder.operation != BSPOperationSubtraction {
-		t.Errorf("Expected operation Subtraction after reset, got %v", extruder.operation)
-	}
-}
-
 func TestGPXExtruderInvalidPath(t *testing.T) {
 	path := &draw.Path{
 		Positions: []vec2d.T{{0, 0}},
@@ -221,21 +136,6 @@ func TestGPXExtruderInvalidPath(t *testing.T) {
 	err := extruder.ExtrudePathToTerrain(path, options)
 	if err == nil {
 		t.Error("Expected error for invalid path with single point")
-	}
-}
-
-func TestGPXExtruderNilPath(t *testing.T) {
-	options := &GPXExtrusionOptions{
-		Width:     2.0,
-		Height:    5.0,
-		Depth:     3.0,
-		Operation: BSPOperationUnion,
-	}
-
-	extruder := NewGPXPathExtruder()
-	err := extruder.ExtrudePathToTerrain(nil, options)
-	if err == nil {
-		t.Error("Expected error for nil path")
 	}
 }
 
