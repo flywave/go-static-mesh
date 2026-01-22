@@ -7,6 +7,7 @@ import (
 	"image/color"
 
 	"github.com/flywave/go-geo"
+	static "github.com/flywave/go-static-mesh/static"
 	vec2d "github.com/flywave/go3d/float64/vec2"
 	vec3d "github.com/flywave/go3d/float64/vec3"
 )
@@ -233,20 +234,35 @@ func (m *Mesh) Merge(other *Mesh) error {
 	}
 
 	if m.TinMesh != nil && other.TinMesh != nil {
-		type meshWithVertices interface {
+		tin1, ok1 := m.TinMesh.(interface {
 			GetVertices() []vec3d.T
 			GetIndices() []uint32
-		}
+		})
+		tin2, ok2 := other.TinMesh.(interface {
+			GetVertices() []vec3d.T
+			GetIndices() []uint32
+		})
 
-		tin1, ok1 := m.TinMesh.(meshWithVertices)
-		tin2, ok2 := other.TinMesh.(meshWithVertices)
 		if ok1 && ok2 {
-			mergedTin := &TinMesh{
-				Vertices:  append(tin1.GetVertices(), tin2.GetVertices()...),
-				Indices:   append(tin1.GetIndices(), tin2.GetIndices()...),
-				MinHeight: math.Min(tin1.GetMinHeight(), tin2.GetMinHeight()),
-				MaxHeight: math.Max(tin1.GetMaxHeight(), tin2.GetMaxHeight()),
+			mergedTin := &static.TinMesh{
+				Vertices: append(tin1.GetVertices(), tin2.GetVertices()...),
+				Indices:  append(tin1.GetIndices(), tin2.GetIndices()...),
 			}
+
+			minHeight := 0.0
+			maxHeight := 0.0
+			for _, v := range mergedTin.Vertices {
+				if v[2] < minHeight {
+					minHeight = v[2]
+				}
+				if v[2] > maxHeight {
+					maxHeight = v[2]
+				}
+			}
+
+			mergedTin.MinHeight = minHeight
+			mergedTin.MaxHeight = maxHeight
+
 			m.TinMesh = mergedTin
 		}
 	}

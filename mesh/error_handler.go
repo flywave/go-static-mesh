@@ -106,7 +106,7 @@ func (h *ErrorHandler) HandleError(err error, context map[string]interface{}) Er
 
 	if h.policy.OnError != nil {
 		fullError := err
-		if context != nil && len(context) > 0 {
+		if len(context) > 0 {
 			fullError = fmt.Errorf("%w (context: %v)", err, context)
 		}
 		h.policy.OnError(fullError)

@@ -188,7 +188,7 @@ func (p *GeoJSONProvider) parseFeature(feature map[string]interface{}) {
 		}
 
 	case "Polygon":
-		if coords != nil && len(coords) > 0 {
+		if len(coords) > 0 {
 			ring, ok := coords[0].([]interface{})
 			if ok {
 				area := draw.NewArea(nil, geo.NewProj(4326), color.RGBA{0, 0xff, 0, 0x80}, color.RGBA{0, 0, 0, 0}, 2.0)
@@ -212,11 +212,35 @@ func (p *GeoJSONProvider) parseFeature(feature map[string]interface{}) {
 		}
 
 	case "MultiLineString":
-		if coords != nil {
-			for _, line := range coords {
-				if lineArray, ok := line.([]interface{}); ok {
-					path := draw.NewPath(nil, nil, color.RGBA{0, 0, 0xff, 0xff}, 2.0)
-					for _, coord := range lineArray {
+		for _, line := range coords {
+			if lineArray, ok := line.([]interface{}); ok {
+				path := draw.NewPath(nil, nil, color.RGBA{0, 0, 0xff, 0xff}, 2.0)
+				for _, coord := range lineArray {
+					if coordArray, ok := coord.([]interface{}); ok && len(coordArray) >= 2 {
+						lng := 0.0
+						lat := 0.0
+						if x, ok := coordArray[0].(float64); ok {
+							lng = x
+						}
+						if y, ok := coordArray[1].(float64); ok {
+							lat = y
+						}
+						path.Positions = append(path.Positions, vec2d.T{lat, lng})
+					}
+				}
+				if len(path.Positions) > 0 {
+					p.paths = append(p.paths, path)
+				}
+			}
+		}
+
+	case "MultiPolygon":
+		for _, polygon := range coords {
+			if polygonArray, ok := polygon.([]interface{}); ok && len(polygonArray) > 0 {
+				ring, ok := polygonArray[0].([]interface{})
+				if ok {
+					area := draw.NewArea(nil, geo.NewProj(4326), color.RGBA{0, 0xff, 0, 0x80}, color.RGBA{0, 0, 0, 0}, 2.0)
+					for _, coord := range ring {
 						if coordArray, ok := coord.([]interface{}); ok && len(coordArray) >= 2 {
 							lng := 0.0
 							lat := 0.0
@@ -226,39 +250,11 @@ func (p *GeoJSONProvider) parseFeature(feature map[string]interface{}) {
 							if y, ok := coordArray[1].(float64); ok {
 								lat = y
 							}
-							path.Positions = append(path.Positions, vec2d.T{lat, lng})
+							area.Positions = append(area.Positions, vec2d.T{lat, lng})
 						}
 					}
-					if len(path.Positions) > 0 {
-						p.paths = append(p.paths, path)
-					}
-				}
-			}
-		}
-
-	case "MultiPolygon":
-		if coords != nil {
-			for _, polygon := range coords {
-				if polygonArray, ok := polygon.([]interface{}); ok && len(polygonArray) > 0 {
-					ring, ok := polygonArray[0].([]interface{})
-					if ok {
-						area := draw.NewArea(nil, geo.NewProj(4326), color.RGBA{0, 0xff, 0, 0x80}, color.RGBA{0, 0, 0, 0}, 2.0)
-						for _, coord := range ring {
-							if coordArray, ok := coord.([]interface{}); ok && len(coordArray) >= 2 {
-								lng := 0.0
-								lat := 0.0
-								if x, ok := coordArray[0].(float64); ok {
-									lng = x
-								}
-								if y, ok := coordArray[1].(float64); ok {
-									lat = y
-								}
-								area.Positions = append(area.Positions, vec2d.T{lat, lng})
-							}
-						}
-						if len(area.Positions) > 0 {
-							p.areas = append(p.areas, area)
-						}
+					if len(area.Positions) > 0 {
+						p.areas = append(p.areas, area)
 					}
 				}
 			}
@@ -462,7 +458,6 @@ func (p *KMLProvider) parseCoordinates(decoder *xml.Decoder) string {
 			}
 		}
 	}
-	return ""
 }
 
 func (p *KMLProvider) GetPaths() []*draw.Path {

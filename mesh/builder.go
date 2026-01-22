@@ -2,15 +2,16 @@ package mesh
 
 import (
 	"fmt"
+	"image"
+	"math"
+	"sync"
+	"time"
+
 	"github.com/flywave/go-geo"
 	draw "github.com/flywave/go-static-mesh/draw"
 	static "github.com/flywave/go-static-mesh/static"
 	vec2d "github.com/flywave/go3d/float64/vec2"
 	vec3d "github.com/flywave/go3d/float64/vec3"
-	"image"
-	"math"
-	"sync"
-	"time"
 )
 
 type Tile struct {
@@ -435,7 +436,7 @@ func (b *Builder) fetchTiles(zoom int) ([]*Tile, error) {
 				}
 			}
 
-			if b.tileCache != nil && tile != nil && tile.Data != nil {
+			if b.tileCache != nil && tile.Data != nil {
 				b.tileCache.Put(c, tile)
 			}
 
@@ -465,10 +466,6 @@ func (b *Builder) fetchTiles(zoom int) ([]*Tile, error) {
 	}
 
 	return validTiles, nil
-}
-
-func (b *Builder) handleTileError(tile [3]int, err error) error {
-	return err
 }
 
 func (b *Builder) mergeTilesToGrid(tiles []*Tile) interface{} {
