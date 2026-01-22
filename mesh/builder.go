@@ -283,6 +283,11 @@ func (b *Builder) build(isPrint bool) (*Mesh, error) {
 
 	mesh.CalculateNormals()
 
+	err = b.addGeoDataToMesh(mesh, tinMesh, isPrint)
+	if err != nil {
+		return nil, fmt.Errorf("failed to add geo data to mesh: %w", err)
+	}
+
 	if isPrint && b.closeMesh {
 		closer := &SimpleCloser{}
 		closedMesh, err := closer.CloseSurfaceMesh(tinMesh, b.baseThickness)

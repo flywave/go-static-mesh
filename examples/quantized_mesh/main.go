@@ -38,15 +38,15 @@ func main() {
 
 	// 构建 Mesh
 	fmt.Println("Building mesh from Cesium Quantized Mesh...")
-	mesh, err := builder.BuildForDisplay()
+	terrainMesh, err := builder.BuildForDisplay()
 	if err != nil {
 		log.Fatalf("Failed to build mesh: %v", err)
 	}
 
 	fmt.Printf("Mesh built successfully:\n")
-	fmt.Printf("  Vertices: %d\n", len(mesh.Vertices))
-	fmt.Printf("  Triangles: %d\n", len(mesh.Indices)/3)
-	fmt.Printf("  Bounds: %v\n", mesh.Bounds)
+	fmt.Printf("  Vertices: %d\n", len(terrainMesh.Vertices))
+	fmt.Printf("  Triangles: %d\n", len(terrainMesh.Indices)/3)
+	fmt.Printf("  Bounds: %v\n", terrainMesh.Bounds)
 
 	// 示例 3: 缓存管理
 	fmt.Println("\nCache management:")
@@ -82,7 +82,7 @@ func main() {
 		"retry": 0,
 	})
 
-	fmt.Printf("  Error type: %s\n", mockErr.(*mesh.MeshError).Type)
+	fmt.Printf("  Error type: %s\n", mockErr.Type)
 	fmt.Printf("  Recovery strategy: %s\n", strategy)
 	fmt.Printf("  Total errors: %d\n", errorHandler.GetTotalErrorCount())
 	fmt.Printf("  Error stats: %v\n", errorHandler.GetStats())

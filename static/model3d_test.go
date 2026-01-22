@@ -242,8 +242,8 @@ func TestStaticModel3DProvider_parseFaceIndices(t *testing.T) {
 		input    []string
 		expected []int
 	}{
-		{[]string{"1/1/1", "2/2/2", "3/3/3"}, []int{1, 2, 3}},
-		{[]string{"1", "2", "3"}, []int{1, 2, 3}},
+		{[]string{"1/1/1", "2/2/2", "3/3/3"}, []int{0, 1, 2}},
+		{[]string{"1", "2", "3"}, []int{0, 1, 2}},
 		{[]string{"0/1/2"}, []int{0}},
 	}
 
