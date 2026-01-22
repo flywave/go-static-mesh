@@ -2,6 +2,7 @@ package builder
 
 import (
 	"fmt"
+	"image"
 	"math"
 	"sync"
 	"time"
@@ -240,7 +241,51 @@ func (b *Builder) build(isPrint bool) (*mesh.Mesh, error) {
 }
 
 func (b *Builder) GenerateTexture() (*mesh.Mesh, error) {
-	return nil, nil
+	if b.imageryProvider == nil {
+		return nil, nil
+	}
+
+	type providerWithImageTile interface {
+		GetImageTile(coord [3]int) (image.Image, error)
+		Grid() *geo.TileGrid
+	}
+
+	provider, ok := b.imageryProvider.(providerWithImageTile)
+	if !ok {
+		return nil, nil
+	}
+
+	zoom, err := b.determineZoom()
+	if err != nil {
+		return nil, err
+	}
+
+	tileFetcher := mesh.NewTileFetcher(provider)
+	tiles, err := tileFetcher.FetchTiles(b.bounds, zoom, b.srs)
+	if err != nil {
+		return nil, err
+	}
+
+	if len(tiles) == 0 {
+		return nil, nil
+	}
+
+	textureGenerator := mesh.NewTextureGenerator(256)
+	textureMesh := &mesh.Mesh{
+		Bounds: b.bounds,
+		Srs:    b.srs,
+	}
+
+	textureImg, err := textureGenerator.Generate(tiles, b.bounds, mesh.DefaultTextureOptions())
+	if err != nil {
+		return nil, err
+	}
+
+	if textureImg != nil {
+		textureMesh.Texture = textureImg
+	}
+
+	return textureMesh, nil
 }
 
 func (b *Builder) determineZoom() (int, error) {

@@ -5,16 +5,41 @@ import (
 	"image/color"
 	"testing"
 
+	"github.com/flywave/go-geo"
 	vec2d "github.com/flywave/go3d/float64/vec2"
 	vec3d "github.com/flywave/go3d/float64/vec3"
 )
+
+type mockImageTileProvider struct{}
+
+func (m *mockImageTileProvider) GetImageTile(coord [3]int) (image.Image, error) {
+	return nil, nil
+}
+
+func (m *mockImageTileProvider) Attribution() string {
+	return ""
+}
+
+func (m *mockImageTileProvider) Grid() *geo.TileGrid {
+	return nil
+}
+
+func (m *mockImageTileProvider) Bounds() vec2d.Rect {
+	return vec2d.Rect{}
+}
+
+func (m *mockImageTileProvider) Srs() geo.Proj {
+	return geo.NewProj(4326)
+}
 
 func TestNewTextureSource(t *testing.T) {
 	bounds := vec2d.Rect{
 		Min: vec2d.T{0, 0},
 		Max: vec2d.T{1, 1},
 	}
-	source := NewTextureSource(bounds, nil)
+	srs := geo.NewProj(4326)
+	provider := &mockImageTileProvider{}
+	source := NewTextureSource(bounds, srs, provider)
 
 	if source == nil {
 		t.Error("NewTextureSource returned nil")
