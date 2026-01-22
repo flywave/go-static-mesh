@@ -19,6 +19,7 @@ github.com/flywave/go-stl v0.0.0-20250818070638-f2c3dee7ad76/go.mod h1:cBGuHNXnP
 github.com/flywave/go3d v0.0.0-20210529142521-14eb5aca1290/go.mod h1:QbQZlarSgCPYFAmoTduiDUd4JCnolimXUswTAnSrFWY=
 github.com/flywave/go3d v0.0.0-20211208020909-d2697502845a/go.mod h1:0/K6WtaMwhhVJb84xWStt+ALQl2EdvzW2oJqz+330GU=
 github.com/flywave/go3d v0.0.0-20250314015505-bf0fda02e242/go.mod h1:bvblxPT+cF0zgDi71CuusPPWCwqU0SikE9ySl2NzeQw=
+github.com/flywave/go3d v0.0.0-20250619003741-cab1a6ea6de6/go.mod h1:bvblxPT+cF0zgDi71CuusPPWCwqU0SikE9ySl2NzeQw=
 github.com/flywave/go3d v0.0.0-20250816053852-aed5d825659f h1:fJm2K2wki1CyA7/UN+Y7jGICSX3YSiGgob/EQUajigA=
 github.com/flywave/go3d v0.0.0-20250816053852-aed5d825659f/go.mod h1:V2ScPXLx6DmzHRt+rbR/EQ+QBdX5DN2NHNTpm13PXZE=
 github.com/flywave/imaging v1.6.5 h1:4bPIylpgP2ZER3aYPAIhNUCDG8xz8fwCoBNpvk67cHs=

@@ -13,6 +13,7 @@ require (
 	github.com/flywave/go-geoid v0.0.0-20220306024153-21126c4758a2
 	github.com/flywave/go-gpx v1.2.2-0.20211027141055-7fa376dde073
 	github.com/flywave/go-mapbox v0.0.0-00010101000000-000000000000
+	github.com/flywave/go-quantized-mesh v0.0.0-20210525134750-cb854922974d
 	github.com/flywave/go-stl v0.0.0-20250818070638-f2c3dee7ad76
 	github.com/flywave/go-tin v0.0.0-20250611104340-f25bca1483ad
 	github.com/flywave/go3d v0.0.0-20250816053852-aed5d825659f
