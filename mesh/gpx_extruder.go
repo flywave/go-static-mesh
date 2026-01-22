@@ -62,7 +62,7 @@ func (e *GPXPathExtruder) ExtrudePathToTerrain(path *draw.Path, options *GPXExtr
 		return fmt.Errorf("failed to extrude path with terrain sampling: %w", err)
 	}
 
-	if len(e.baseMesh.Indices) == 0 {
+	if len(e.baseMesh.Indices) == 0 || e.baseMesh == nil {
 		e.baseMesh = tempMesh
 		return nil
 	}
@@ -70,6 +70,10 @@ func (e *GPXPathExtruder) ExtrudePathToTerrain(path *draw.Path, options *GPXExtr
 	resultMesh, err := PerformBoolean(e.baseMesh, tempMesh, options.Operation)
 	if err != nil {
 		return fmt.Errorf("failed to perform boolean operation: %w", err)
+	}
+
+	if resultMesh == nil {
+		return nil
 	}
 
 	e.baseMesh = resultMesh
@@ -185,9 +189,10 @@ func (e *GPXPathExtruder) sampleTerrainHeight(pos vec2d.T, terrainMesh *Mesh, ra
 	}
 
 	if sampleCount == 0 {
+		radius = math.Inf(1)
 		minDist := math.Inf(1)
 		minHeight := 0.0
-		for i := 0; i < len(terrainMesh.Vertices); i += 20 {
+		for i := 0; i < len(terrainMesh.Vertices); i++ {
 			v := terrainMesh.Vertices[i]
 			dist := math.Sqrt(
 				math.Pow(v[0]-pos[0], 2) +

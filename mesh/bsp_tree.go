@@ -47,15 +47,19 @@ func buildBSPNode(polygons BSPPolygons) *BSPNode {
 
 	node.Plane = selectSplitPlane(polygons)
 
-	var frontPolygons, backPolygons BSPPolygons
+	var frontPolygons, backPolygons, coplanarFrontPolygons, coplanarBackPolygons BSPPolygons
 
 	for _, poly := range polygons {
-		var front, back BSPPolygons
-		node.Plane.SplitPolygon(poly, &BSPPolygons{}, &BSPPolygons{}, &front, &back)
+		var front, back, coplanarFront, coplanarBack BSPPolygons
+		node.Plane.SplitPolygon(poly, &coplanarFront, &coplanarBack, &front, &back)
 
 		frontPolygons = append(frontPolygons, front...)
 		backPolygons = append(backPolygons, back...)
+		coplanarFrontPolygons = append(coplanarFrontPolygons, coplanarFront...)
+		coplanarBackPolygons = append(coplanarBackPolygons, coplanarBack...)
 	}
+
+	node.Polygons = coplanarFrontPolygons
 
 	if len(frontPolygons) > 0 {
 		node.Front = buildBSPNode(frontPolygons)
@@ -118,12 +122,14 @@ func clipPolygons(node, clipper *BSPNode, isBack bool) *BSPNode {
 
 	result := &BSPNode{
 		Plane:    node.Plane,
-		Polygons: node.Polygons.Clone(),
+		Polygons: BSPPolygons{},
 	}
 
-	if len(result.Polygons) > 0 {
-		for _, poly := range result.Polygons {
-			classifyPolygons(clipper, poly, isBack)
+	if len(node.Polygons) > 0 {
+		for _, poly := range node.Polygons {
+			if classifyPolygons(clipper, poly, isBack) {
+				result.Polygons = append(result.Polygons, poly)
+			}
 		}
 	}
 
@@ -162,8 +168,8 @@ func classifyPolygons(clipper *BSPNode, poly *BSPPolygon, isBack bool) bool {
 		return classifyPolygons(clipper.Back, poly, isBack)
 	}
 
-	dot := vec3d.Dot(&plane.Normal, &poly.Plane.Normal)
-	frontSide := dot >= 0
+	planeDist := plane.DistanceToPoint(poly.Vertices[0].Position)
+	frontSide := planeDist >= 0
 
 	if isBack {
 		return !frontSide
