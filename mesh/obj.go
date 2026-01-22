@@ -9,12 +9,20 @@ import (
 type OBJWriter struct {
 	IncludeNormals bool
 	IncludeUVs     bool
+	SeparateMtl    bool
 }
 
 func NewOBJWriter(includeNormals, includeUVs bool) *OBJWriter {
 	return &OBJWriter{
 		IncludeNormals: includeNormals,
 		IncludeUVs:     includeUVs,
+	}
+}
+
+func NewObjWriter() *OBJWriter {
+	return &OBJWriter{
+		IncludeNormals: true,
+		IncludeUVs:     true,
 	}
 }
 
@@ -105,4 +113,8 @@ func (w *OBJWriter) WriteTo(mesh *Mesh, writer io.Writer) error {
 
 func (w *OBJWriter) WriteFile(mesh *Mesh, path string) error {
 	return w.Write(mesh, path)
+}
+
+func (w *OBJWriter) SetSeparateMtl(separate bool) {
+	w.SeparateMtl = separate
 }

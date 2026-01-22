@@ -225,7 +225,9 @@ func ExtrudeGPXPathsToTerrain(paths []*draw.Path, terrainMesh *Mesh, options *GP
 	}
 
 	extruder := NewGPXPathExtruder()
-	extruder.SetBaseMesh(terrainMesh)
+	if terrainMesh != nil {
+		extruder.SetBaseMesh(terrainMesh)
+	}
 
 	if options == nil {
 		options = &GPXExtrusionOptions{

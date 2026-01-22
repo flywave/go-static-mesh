@@ -12,15 +12,24 @@ import (
 )
 
 type STLWriter struct {
-	ASCII bool
+	ASCII     bool
+	MergeMesh bool
 }
 
 func NewSTLWriter(ascii bool) *STLWriter {
 	return &STLWriter{ASCII: ascii}
 }
 
+func NewStlWriter() *STLWriter {
+	return &STLWriter{ASCII: false}
+}
+
 func (w *STLWriter) SetBinary(binary bool) {
 	w.ASCII = !binary
+}
+
+func (w *STLWriter) SetMergeMesh(merge bool) {
+	w.MergeMesh = merge
 }
 
 func (w *STLWriter) WriteFile(mesh *Mesh, path string) error {

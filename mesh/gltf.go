@@ -11,14 +11,23 @@ import (
 )
 
 type GLTFWriter struct {
-	Binary     bool
-	IncludeUVs bool
+	Binary      bool
+	IncludeUVs  bool
+	EmbedImages bool
+	Draco       bool
 }
 
 func NewGLTFWriter(binary bool, includeUVs bool) *GLTFWriter {
 	return &GLTFWriter{
 		Binary:     binary,
 		IncludeUVs: includeUVs,
+	}
+}
+
+func NewGltfWriter() *GLTFWriter {
+	return &GLTFWriter{
+		Binary:     true,
+		IncludeUVs: true,
 	}
 }
 
@@ -184,6 +193,14 @@ func (w *GLTFWriter) SetBinary(binary bool) {
 
 func (w *GLTFWriter) SetIncludeUVs(include bool) {
 	w.IncludeUVs = include
+}
+
+func (w *GLTFWriter) SetEmbedImages(embed bool) {
+	w.EmbedImages = embed
+}
+
+func (w *GLTFWriter) SetDraco(enabled bool) {
+	w.Draco = enabled
 }
 
 func (w *GLTFWriter) convertVerticesToFloat32(vertices []vec3d.T) []float32 {

@@ -132,6 +132,33 @@ func (b *Builder) SetTileCache(cache TileCache) {
 	b.tileCache = cache
 }
 
+func (b *Builder) SetResolution(resolution float64) {
+	b.resolution = resolution
+}
+
+func (b *Builder) AddPath(path *draw.Path) {
+	b.geoData = append(b.geoData, path)
+}
+
+func (b *Builder) SetTexture(texture *Mesh) {
+	if texture == nil || texture.Texture == nil {
+		return
+	}
+
+	mesh := &Mesh{
+		Vertices: texture.Vertices,
+		Indices:  texture.Indices,
+		Texture:  texture.Texture,
+		UVs:      texture.UVs,
+		Bounds:   texture.Bounds,
+		Srs:      texture.Srs,
+	}
+
+	if len(mesh.Vertices) > 0 && len(mesh.Normals) == 0 {
+		mesh.CalculateNormals()
+	}
+}
+
 func (b *Builder) GetCacheStats() CacheStats {
 	if b.tileCache == nil {
 		return CacheStats{}
