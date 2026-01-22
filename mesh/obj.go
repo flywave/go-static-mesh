@@ -102,3 +102,7 @@ func (w *OBJWriter) WriteTo(mesh *Mesh, writer io.Writer) error {
 
 	return nil
 }
+
+func (w *OBJWriter) WriteFile(mesh *Mesh, path string) error {
+	return w.Write(mesh, path)
+}

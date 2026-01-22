@@ -8,9 +8,11 @@ import (
 	"image/png"
 	"io"
 	"net/http"
+	"os"
 	"strings"
 	"time"
 
+	"github.com/flywave/go-cog"
 	"github.com/flywave/go-geo"
 	vec2d "github.com/flywave/go3d/float64/vec2"
 )
@@ -195,6 +197,136 @@ func (p *GenericTileProvider) GetImageTile(coord [3]int) (image.Image, error) {
 
 func (p *GenericTileProvider) GetImageBounds() vec2d.Rect {
 	return p.bounds
+}
+
+type GeoTIFFImageryProvider struct {
+	filename string
+	tempFile *os.File
+	grid     *geo.TileGrid
+	bounds   vec2d.Rect
+	srs      geo.Proj
+	reader   *cog.Reader
+	image    image.Image
+}
+
+func NewGeoTIFFImageryProvider(filename string) (*GeoTIFFImageryProvider, error) {
+	reader := cog.Read(filename)
+	if reader == nil || len(reader.Data) == 0 {
+		return nil, fmt.Errorf("failed to read GeoTIFF file: %s", filename)
+	}
+
+	p := &GeoTIFFImageryProvider{
+		filename: filename,
+		reader:   reader,
+	}
+
+	if len(reader.Data) > 0 {
+		bounds := reader.GetBounds(0)
+		p.bounds = bounds
+
+		if epsgCode, err := reader.GetEPSGCode(0); err == nil && epsgCode != 0 {
+			p.srs = geo.NewProj(uint32(epsgCode))
+		} else {
+			p.srs = geo.NewProj(4326)
+		}
+
+		size := reader.GetSize(0)
+		tileSize0 := uint32(size[0])
+		tileSize1 := uint32(size[1])
+		tileSize := [2]uint32{tileSize0, tileSize1}
+		p.grid = &geo.TileGrid{
+			Srs:      p.srs,
+			TileSize: tileSize[:],
+		}
+
+		if img, ok := reader.Data[0].(image.Image); ok {
+			p.image = img
+		}
+	}
+
+	return p, nil
+}
+
+func NewGeoTIFFImageryProviderFromReader(r io.Reader) (*GeoTIFFImageryProvider, error) {
+	file, err := os.CreateTemp("", "geotiff-imagery-*.tif")
+	if err != nil {
+		return nil, fmt.Errorf("failed to create temp file: %w", err)
+	}
+
+	_, err = io.Copy(file, r)
+	if err != nil {
+		file.Close()
+		os.Remove(file.Name())
+		return nil, fmt.Errorf("failed to write temp file: %w", err)
+	}
+
+	err = file.Close()
+	if err != nil {
+		os.Remove(file.Name())
+		return nil, fmt.Errorf("failed to close temp file: %w", err)
+	}
+
+	p, err := NewGeoTIFFImageryProvider(file.Name())
+	if err != nil {
+		os.Remove(file.Name())
+		return nil, err
+	}
+
+	p.tempFile = file
+	return p, nil
+}
+
+func (p *GeoTIFFImageryProvider) Close() error {
+	if p.tempFile != nil {
+		err := os.Remove(p.tempFile.Name())
+		p.tempFile = nil
+		return err
+	}
+
+	return nil
+}
+
+func (p *GeoTIFFImageryProvider) Attribution() string {
+	return ""
+}
+
+func (p *GeoTIFFImageryProvider) Grid() *geo.TileGrid {
+	return p.grid
+}
+
+func (p *GeoTIFFImageryProvider) Bounds() vec2d.Rect {
+	return p.bounds
+}
+
+func (p *GeoTIFFImageryProvider) Srs() geo.Proj {
+	return p.srs
+}
+
+func (p *GeoTIFFImageryProvider) GetImageTile(coord [3]int) (image.Image, error) {
+	if p.image != nil {
+		return p.image, nil
+	}
+
+	return nil, fmt.Errorf("no image data available")
+}
+
+func (p *GeoTIFFImageryProvider) GetImageBounds() vec2d.Rect {
+	return p.bounds
+}
+
+func (p *GeoTIFFImageryProvider) Fetch(coord [3]int) ([]byte, error) {
+	img, err := p.GetImageTile(coord)
+	if err != nil {
+		return nil, err
+	}
+
+	buf := new(bytes.Buffer)
+	err = png.Encode(buf, img)
+	if err != nil {
+		return nil, fmt.Errorf("failed to encode image: %w", err)
+	}
+
+	return buf.Bytes(), nil
 }
 
 func NewTileFetcher(provider interface {

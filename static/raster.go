@@ -5,6 +5,7 @@ import (
 	"io"
 	"os"
 
+	gdal "github.com/flywave/flywave-gdal"
 	"github.com/flywave/go-cog"
 	"github.com/flywave/go-geo"
 	vec2d "github.com/flywave/go3d/float64/vec2"
@@ -20,6 +21,34 @@ type ElevationGrid struct {
 	NoData   float64
 	Bounds   vec2d.Rect
 	Srs      geo.Proj
+}
+
+func (g *ElevationGrid) GetWidth() int {
+	return g.Width
+}
+
+func (g *ElevationGrid) GetHeight() int {
+	return g.Height
+}
+
+func (g *ElevationGrid) GetData() []float64 {
+	return g.Data
+}
+
+func (g *ElevationGrid) GetMinX() float64 {
+	return g.MinX
+}
+
+func (g *ElevationGrid) GetMinY() float64 {
+	return g.MinY
+}
+
+func (g *ElevationGrid) GetCellSize() float64 {
+	return g.CellSize
+}
+
+func (g *ElevationGrid) GetNoData() float64 {
+	return g.NoData
 }
 
 func (g *ElevationGrid) GetElevation(x, y float64) float64 {
@@ -181,50 +210,91 @@ func (p *MapboxRasterProvider) LoadDEM(r io.Reader, mode RasterDemMode) (*TileDa
 
 type GeoTIFFRasterProvider struct {
 	filename string
+	tempFile *os.File
 	grid     *geo.TileGrid
 	bounds   vec2d.Rect
 	srs      geo.Proj
 	reader   *cog.Reader
 	noData   float64
+	gdalDS   gdal.Dataset
 }
 
 func NewGeoTIFFRasterProvider(filename string) (*GeoTIFFRasterProvider, error) {
-	reader := cog.Read(filename)
-	if reader == nil || len(reader.Data) == 0 {
-		return nil, fmt.Errorf("failed to read GeoTIFF file: %s", filename)
+	ds, err := gdal.Open(filename, gdal.ReadOnly)
+	if err != nil {
+		return nil, fmt.Errorf("failed to open GeoTIFF with GDAL: %w", err)
 	}
 
 	p := &GeoTIFFRasterProvider{
 		filename: filename,
-		reader:   reader,
+		gdalDS:   ds,
 		noData:   -9999,
 	}
 
-	if len(reader.Data) > 0 {
-		bounds := reader.GetBounds(0)
-		p.bounds = bounds
+	boundsArr := ds.Bounds()
+	p.bounds = vec2d.Rect{
+		Min: vec2d.T{boundsArr[0], boundsArr[1]},
+		Max: vec2d.T{boundsArr[2], boundsArr[3]},
+	}
 
-		if epsgCode, err := reader.GetEPSGCode(0); err == nil && epsgCode != 0 {
-			p.srs = geo.NewProj(uint32(epsgCode))
-		} else {
-			p.srs = geo.NewProj(4326)
-		}
+	p.srs = geo.NewProj(4326)
 
-		if noData := reader.GetNoData(0); noData != nil {
-			p.noData = *noData
-		}
+	shape := ds.Shape()
+	tileSize := [2]uint32{uint32(shape[0]), uint32(shape[1])}
+	p.grid = &geo.TileGrid{
+		Srs:      p.srs,
+		TileSize: tileSize[:],
+	}
 
-		size := reader.GetSize(0)
-		tileSize0 := uint32(size[0])
-		tileSize1 := uint32(size[1])
-		tileSize := [2]uint32{tileSize0, tileSize1}
-		p.grid = &geo.TileGrid{
-			Srs:      p.srs,
-			TileSize: tileSize[:],
-		}
+	nodatavals := ds.Nodatavals()
+	if len(nodatavals) > 0 {
+		p.noData = nodatavals[0]
 	}
 
 	return p, nil
+}
+
+func NewGeoTIFFRasterProviderFromReader(r io.Reader) (*GeoTIFFRasterProvider, error) {
+	file, err := os.CreateTemp("", "geotiff-raster-*.tif")
+	if err != nil {
+		return nil, fmt.Errorf("failed to create temp file: %w", err)
+	}
+
+	_, err = io.Copy(file, r)
+	if err != nil {
+		file.Close()
+		os.Remove(file.Name())
+		return nil, fmt.Errorf("failed to write temp file: %w", err)
+	}
+
+	err = file.Close()
+	if err != nil {
+		os.Remove(file.Name())
+		return nil, fmt.Errorf("failed to close temp file: %w", err)
+	}
+
+	p, err := NewGeoTIFFRasterProvider(file.Name())
+	if err != nil {
+		os.Remove(file.Name())
+		return nil, err
+	}
+
+	p.tempFile = file
+	return p, nil
+}
+
+func (p *GeoTIFFRasterProvider) Close() error {
+	if !p.gdalDS.IsClosed() {
+		p.gdalDS.Close()
+	}
+
+	if p.tempFile != nil {
+		err := os.Remove(p.tempFile.Name())
+		p.tempFile = nil
+		return err
+	}
+
+	return nil
 }
 
 func (p *GeoTIFFRasterProvider) Attribution() string {
@@ -257,53 +327,30 @@ func (p *GeoTIFFRasterProvider) GetElevation(lng, lat float64) float64 {
 }
 
 func (p *GeoTIFFRasterProvider) GetElevationGrid() *ElevationGrid {
-	if p.reader == nil || len(p.reader.Data) == 0 {
+	if p.gdalDS.IsClosed() {
 		return nil
 	}
 
-	size := p.reader.GetSize(0)
-	data := p.reader.Data[0]
+	shape := p.gdalDS.Shape()
+	width := shape[0]
+	height := shape[1]
 
-	var elevations []float64
-	switch v := data.(type) {
-	case []uint16:
-		elevations = make([]float64, len(v))
-		for i, val := range v {
-			elevations[i] = float64(val)
-		}
-	case []int16:
-		elevations = make([]float64, len(v))
-		for i, val := range v {
-			elevations[i] = float64(val)
-		}
-	case []float32:
-		elevations = make([]float64, len(v))
-		for i, val := range v {
-			elevations[i] = float64(val)
-		}
-	case []float64:
-		elevations = make([]float64, len(v))
-		copy(elevations, v)
-	default:
+	buffer := make([]float64, width*height)
+	err := p.gdalDS.ReadRaster(0, 0, width, height, buffer, width, height, []int{0}, gdal.Float64, 0, 0, 0, gdal.GRA_NearestNeighbour)
+	if err != nil {
 		return nil
 	}
 
-	pixelSize := p.reader.GetPixelSize(0)
-	minX := p.bounds.Min[0]
-	minY := p.bounds.Min[1]
-	if p.srs != nil {
-		transform := p.reader.GetGeoTransform(0)
-		minX = transform[3]
-		minY = transform[5] + transform[4]*float64(size[1])
-	}
+	geoTransform := p.gdalDS.GeoTransform()
+	cellSize := geoTransform[1]
 
 	return &ElevationGrid{
-		Width:    int(size[0]),
-		Height:   int(size[1]),
-		Data:     elevations,
-		MinX:     minX,
-		MinY:     minY,
-		CellSize: pixelSize[0],
+		Width:    width,
+		Height:   height,
+		Data:     buffer,
+		MinX:     p.bounds.Min[0],
+		MinY:     p.bounds.Min[1],
+		CellSize: cellSize,
 		NoData:   p.noData,
 		Bounds:   p.bounds,
 		Srs:      p.srs,
@@ -336,59 +383,37 @@ func (p *GeoTIFFRasterProvider) LoadDEM(r io.Reader, mode RasterDemMode) (*TileD
 		return nil, err
 	}
 
-	_, err = file.Seek(0, io.SeekStart)
+	ds, err := gdal.Open(file.Name(), gdal.ReadOnly)
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("failed to open GeoTIFF: %w", err)
+	}
+	defer ds.Close()
+
+	shape := ds.Shape()
+	width := shape[0]
+	height := shape[1]
+
+	buffer := make([]float64, width*height)
+	err = ds.ReadRaster(0, 0, width, height, buffer, width, height, []int{0}, gdal.Float64, 0, 0, 0, gdal.GRA_NearestNeighbour)
+	if err != nil {
+		return nil, fmt.Errorf("failed to read raster data: %w", err)
 	}
 
-	reader := cog.Read(file.Name())
-	if reader == nil || len(reader.Data) == 0 {
-		return nil, fmt.Errorf("failed to read GeoTIFF data")
+	tileData := NewTileData([2]uint32{uint32(width), uint32(height)}, BORDER_NONE)
+	tileData.Datas = buffer
+	tileData.NoData = p.noData
+
+	boundsArr := ds.Bounds()
+	tileData.Box = vec2d.Rect{
+		Min: vec2d.T{boundsArr[0], boundsArr[1]},
+		Max: vec2d.T{boundsArr[2], boundsArr[3]},
 	}
 
-	size := reader.GetSize(0)
-	data := reader.Data[0]
+	tileData.Boxsrs = p.srs
 
-	var elevations []float64
-	switch v := data.(type) {
-	case []uint16:
-		elevations = make([]float64, len(v))
-		for i, val := range v {
-			elevations[i] = float64(val)
-		}
-	case []int16:
-		elevations = make([]float64, len(v))
-		for i, val := range v {
-			elevations[i] = float64(val)
-		}
-	case []float32:
-		elevations = make([]float64, len(v))
-		for i, val := range v {
-			elevations[i] = float64(val)
-		}
-	case []float64:
-		elevations = make([]float64, len(v))
-		copy(elevations, v)
-	default:
-		return nil, fmt.Errorf("unsupported data type")
-	}
-
-	tileData := NewTileData(size, BORDER_NONE)
-	tileData.Datas = elevations
-	tileData.NoData = -9999
-
-	if bounds := reader.GetBounds(0); bounds.Min[0] != bounds.Max[0] || bounds.Min[1] != bounds.Max[1] {
-		tileData.Box = bounds
-	}
-
-	if epsgCode, err := reader.GetEPSGCode(0); err == nil && epsgCode != 0 {
-		tileData.Boxsrs = geo.NewProj(uint32(epsgCode))
-	} else {
-		tileData.Boxsrs = geo.NewProj(4326)
-	}
-
-	if noData := reader.GetNoData(0); noData != nil {
-		tileData.NoData = *noData
+	nodatavals := ds.Nodatavals()
+	if len(nodatavals) > 0 {
+		tileData.NoData = nodatavals[0]
 	}
 
 	return tileData, nil

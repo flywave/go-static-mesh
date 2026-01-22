@@ -82,6 +82,7 @@ func (w *GLTFWriter) Write(mesh *Mesh, path string) error {
 		Count:         uint32(len(mesh.Indices)),
 	})
 
+	uvAccessorIndex := uint32(3)
 	if w.IncludeUVs && len(mesh.UVs) > 0 {
 		uvFloats := w.convertUVsToFloat32(mesh.UVs)
 		uvBuf := &gltf.Buffer{
@@ -90,10 +91,10 @@ func (w *GLTFWriter) Write(mesh *Mesh, path string) error {
 		}
 		buffers = append(buffers, uvBuf)
 
-		attributes["TEXCOORD_0"] = 3
+		attributes["TEXCOORD_0"] = uvAccessorIndex
 
 		accessors = append(accessors, &gltf.Accessor{
-			BufferView:    gltf.Index(3),
+			BufferView:    gltf.Index(uvAccessorIndex),
 			ByteOffset:    0,
 			ComponentType: gltf.ComponentFloat,
 			Type:          gltf.AccessorVec2,
@@ -124,6 +125,16 @@ func (w *GLTFWriter) Write(mesh *Mesh, path string) error {
 		Target:     gltf.TargetElementArrayBuffer,
 	}
 	bufferViews = append(bufferViews, indexView)
+
+	if w.IncludeUVs && len(mesh.UVs) > 0 {
+		uvView := &gltf.BufferView{
+			Buffer:     uvAccessorIndex,
+			ByteOffset: 0,
+			ByteLength: buffers[uvAccessorIndex].ByteLength,
+			Target:     gltf.TargetArrayBuffer,
+		}
+		bufferViews = append(bufferViews, uvView)
+	}
 
 	doc.Meshes = []*gltf.Mesh{{
 		Primitives: []*gltf.Primitive{
@@ -161,6 +172,18 @@ func (w *GLTFWriter) Write(mesh *Mesh, path string) error {
 
 func (w *GLTFWriter) WriteTo(mesh *Mesh, writer io.Writer) error {
 	return w.Write(mesh, "")
+}
+
+func (w *GLTFWriter) WriteFile(mesh *Mesh, path string) error {
+	return w.Write(mesh, path)
+}
+
+func (w *GLTFWriter) SetBinary(binary bool) {
+	w.Binary = binary
+}
+
+func (w *GLTFWriter) SetIncludeUVs(include bool) {
+	w.IncludeUVs = include
 }
 
 func (w *GLTFWriter) convertVerticesToFloat32(vertices []vec3d.T) []float32 {

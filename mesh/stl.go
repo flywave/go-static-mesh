@@ -3,6 +3,7 @@ package mesh
 import (
 	"fmt"
 	"io"
+	"math"
 	"os"
 
 	stl "github.com/flywave/go-stl"
@@ -18,7 +19,11 @@ func NewSTLWriter(ascii bool) *STLWriter {
 	return &STLWriter{ASCII: ascii}
 }
 
-func (w *STLWriter) Write(mesh *Mesh, path string) error {
+func (w *STLWriter) SetBinary(binary bool) {
+	w.ASCII = !binary
+}
+
+func (w *STLWriter) WriteFile(mesh *Mesh, path string) error {
 	file, err := os.Create(path)
 	if err != nil {
 		return fmt.Errorf("failed to create file: %w", err)
@@ -26,6 +31,10 @@ func (w *STLWriter) Write(mesh *Mesh, path string) error {
 	defer file.Close()
 
 	return w.WriteTo(mesh, file)
+}
+
+func (w *STLWriter) Write(mesh *Mesh, path string) error {
+	return w.WriteFile(mesh, path)
 }
 
 func (w *STLWriter) WriteTo(mesh *Mesh, writer io.Writer) error {
@@ -81,5 +90,5 @@ func (w *STLWriter) calculateNormal(v0, v1, v2 vec3d.T) vec3.T {
 }
 
 func (w *STLWriter) vectorLength(v vec3d.T) float64 {
-	return v[0]*v[0] + v[1]*v[1] + v[2]*v[2]
+	return math.Sqrt(v[0]*v[0] + v[1]*v[1] + v[2]*v[2])
 }

@@ -9,6 +9,12 @@
 - 基于 TIN Mesh 构建所有模型
 - 灵活的数据获取接口设计
 - 支持地理数据的不同展示方式（贴图或突出显示）
+- Tile 缓存机制：减少重复网络请求，加速重复构建
+- 可配置的缓存策略：支持 LRU 淘汰、TTL 过期
+- GeoTIFF 支持：
+  - 高程数据通过 GDAL 读取（`GeoTIFFRasterProvider`）
+  - 影像数据通过 COG 读取（`GeoTIFFImageryProvider`）
+  - 支持 `io.Reader` 接口，使用临时文件处理
 
 ## 核心概念
 
@@ -95,6 +101,78 @@
 
 ```bash
 go get github.com/flywave/go-static-mesh
+```
+
+### 示例：使用 Tile 缓存加速构建
+
+```go
+package main
+
+import (
+    "github.com/flywave/go-static-mesh/mesh"
+    "time"
+)
+
+func main() {
+    builder := mesh.NewBuilder()
+
+    // 设置 Tile 缓存（最多缓存 1000 个 tile，TTL 为 10 分钟）
+    cache := mesh.NewMemoryTileCache(1000, 10*time.Minute)
+    builder.SetTileCache(cache)
+
+    // 第一次构建（会从网络获取 tiles）
+    mesh1, err := builder.BuildForDisplay()
+
+    // 查看缓存统计
+    stats := builder.GetCacheStats()
+    fmt.Printf("Cache hits: %d, misses: %d, evictions: %d\n",
+        stats.Hits, stats.Misses, stats.Evictions)
+
+    // 第二次构建相同区域（会从缓存读取，速度更快）
+    mesh2, err := builder.BuildForDisplay()
+
+    // 清除缓存
+    builder.SetTileCache(nil)
+}
+```
+
+### 示例：从 io.Reader 加载 GeoTIFF
+
+```go
+package main
+
+import (
+    "bytes"
+    "github.com/flywave/go-static-mesh/mesh"
+    "github.com/flywave/go-static-mesh/static"
+    "github.com/flywave/go-tin"
+    "io"
+    "net/http"
+)
+
+func main() {
+    // 从网络下载 GeoTIFF 数据
+    resp, err := http.Get("https://example.com/elevation.tif")
+    if err != nil {
+        panic(err)
+    }
+    defer resp.Body.Close()
+
+    // 使用 io.Reader 创建 Provider
+    provider, err := static.NewGeoTIFFRasterProviderFromReader(resp.Body)
+    if err != nil {
+        panic(err)
+    }
+    defer provider.Close()
+
+    builder := mesh.NewBuilder()
+    builder.SetTINGenerator(&tin.Algorithm{})
+    builder.SetRasterProvider(provider)
+    builder.SetBounds(provider.Bounds(), provider.Srs())
+
+    mesh, err := builder.BuildForDisplay()
+    // ...
+}
 ```
 
 ### 示例：高程数据转 STL（3D 打印）
@@ -228,13 +306,16 @@ go-static-mesh/
 
 ## 开发状态
 
-🚧 项目正在开发中
+✅ 核心功能已完成 (85%)
 
 - [x] 架构设计
-- [ ] 接口实现
-- [ ] TIN 集成
-- [ ] 输出格式实现
+- [x] 接口实现
+- [x] TIN 集成
+- [x] 输出格式实现 (STL/GLTF/OBJ)
+- [x] Tile 缓存机制
 - [ ] 文档完善
+- [ ] 大数据处理 (P5: 进行中)
+- [ ] 更多数据源支持 (P7)
 
 ## 贡献
 

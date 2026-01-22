@@ -52,6 +52,7 @@ type TinMeshProvider interface {
 	TileProvider
 
 	GetMeshTile(coord [3]int) (*TinMesh, error)
+	GetMesh() (*TinMesh, error)
 	GetHeight(lng, lat float64) float64
 	GetNormal(lng, lat float64) vec3d.T
 }
@@ -111,4 +112,8 @@ func (p *CesiumQuantizedMeshProvider) GetHeight(lng, lat float64) float64 {
 
 func (p *CesiumQuantizedMeshProvider) GetNormal(lng, lat float64) vec3d.T {
 	return vec3d.T{0, 0, 1}
+}
+
+func (p *CesiumQuantizedMeshProvider) GetMesh() (*TinMesh, error) {
+	return nil, nil
 }
