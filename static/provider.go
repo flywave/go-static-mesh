@@ -1,19 +1,23 @@
 package static
 
 import (
+	draw "github.com/flywave/go-static-mesh/draw"
+
 	"github.com/flywave/go-geo"
 	vec2d "github.com/flywave/go3d/float64/vec2"
 )
 
 type TileProvider interface {
-	Attribution() string
-	Grid() *geo.TileGrid
-	Bounds() vec2d.Rect
-	Srs() geo.Proj
+	draw.TileProvider
 }
 
 type TileFetcher interface {
 	Fetch(coord [3]int) ([]byte, error)
+}
+
+type ImageTileProvider interface {
+	TileProvider
+	draw.ImageTileProvider
 }
 
 type TileProviderMode int

@@ -9,12 +9,23 @@ import (
 	"math"
 	"sync"
 
-	static "github.com/flywave/go-static-mesh"
 	vec2d "github.com/flywave/go3d/float64/vec2"
 
 	"github.com/flywave/gg"
 	"github.com/flywave/go-geo"
 )
+
+type TileProvider interface {
+	Attribution() string
+	Grid() *geo.TileGrid
+	Bounds() vec2d.Rect
+	Srs() geo.Proj
+}
+
+type ImageTileProvider interface {
+	TileProvider
+	GetImageTile(coord [3]int) (image.Image, error)
+}
 
 type Context struct {
 	width               int
@@ -24,8 +35,8 @@ type Context struct {
 	boundingBoxSrs      geo.Proj
 	background          color.Color
 	objects             []MapObject
-	overlays            []static.TileProvider
-	tileProvider        static.TileProvider
+	overlays            []ImageTileProvider
+	tileProvider        ImageTileProvider
 	overrideAttribution *string
 	grid                *geo.TileGrid
 }
@@ -43,7 +54,7 @@ func NewContext() *Context {
 	return t
 }
 
-func (m *Context) SetTileProvider(t static.TileProvider) {
+func (m *Context) SetTileProvider(t ImageTileProvider) {
 	m.tileProvider = t
 }
 
@@ -141,7 +152,7 @@ func (m *Context) ClearObjects() {
 	m.objects = nil
 }
 
-func (m *Context) AddOverlay(overlay static.TileProvider) {
+func (m *Context) AddOverlay(overlay ImageTileProvider) {
 	m.overlays = append(m.overlays, overlay)
 }
 
@@ -416,7 +427,7 @@ func (m *Context) Render() (image.Image, error) {
 		draw.Draw(img, img.Bounds(), &image.Uniform{m.background}, image.Point{}, draw.Src)
 	}
 
-	layers := []static.TileProvider{m.tileProvider}
+	layers := []ImageTileProvider{m.tileProvider}
 	if m.overlays != nil {
 		layers = append(layers, m.overlays...)
 	}
@@ -465,7 +476,7 @@ func (m *Context) RenderWithTransformer() (image.Image, *Transformer, error) {
 		draw.Draw(img, img.Bounds(), &image.Uniform{m.background}, image.Point{}, draw.Src)
 	}
 
-	layers := []static.TileProvider{m.tileProvider}
+	layers := []ImageTileProvider{m.tileProvider}
 	if m.overlays != nil {
 		layers = append(layers, m.overlays...)
 	}
@@ -480,16 +491,17 @@ func (m *Context) RenderWithTransformer() (image.Image, *Transformer, error) {
 		object.Draw(gc, trans)
 	}
 
-	if m.tileProvider.Attribution() == "" {
+	attribution := m.Attribution()
+	if attribution == "" {
 		return img, trans, nil
 	}
-	_, textHeight := gc.MeasureString(m.tileProvider.Attribution())
+	_, textHeight := gc.MeasureString(attribution)
 	boxHeight := textHeight + 4.0
 	gc.SetRGBA(0.0, 0.0, 0.0, 0.5)
 	gc.DrawRectangle(0.0, float64(trans.pHeight)-boxHeight, float64(trans.pWidth), boxHeight)
 	gc.Fill()
 	gc.SetRGBA(1.0, 1.0, 1.0, 0.75)
-	gc.DrawString(m.tileProvider.Attribution(), 4.0, float64(trans.pHeight)-4.0)
+	gc.DrawString(attribution, 4.0, float64(trans.pHeight)-4.0)
 
 	return img, trans, nil
 }
@@ -513,11 +525,10 @@ func (t *tile) GetImage() image.Image {
 	return t.image
 }
 
-func (m *Context) renderLayer(gc *gg.Context, zoom int, trans *Transformer, provider static.TileProvider) error {
+func (m *Context) renderLayer(gc *gg.Context, zoom int, trans *Transformer, provider ImageTileProvider) error {
 	var wg sync.WaitGroup
 	tiles := (1 << uint(zoom))
 	fetchedTiles := make(chan *tile)
-	f := static.NewTileFetcher(provider)
 
 	go func() {
 		for xx := 0; xx < trans.tCountX; xx++ {
@@ -539,8 +550,8 @@ func (m *Context) renderLayer(gc *gg.Context, zoom int, trans *Transformer, prov
 				coord := [3]int{x, y, zoom}
 				go func(wg *sync.WaitGroup, c [3]int, xx, yy int) {
 					defer wg.Done()
-					if ti, err := f.Fetch(c); err == nil {
-						t := &tile{image: ti}
+					if img, err := provider.GetImageTile(c); err == nil {
+						t := &tile{image: img}
 						t.offx = xx * int(m.grid.TileSize[0])
 						t.offy = yy * int(m.grid.TileSize[1])
 						fetchedTiles <- t

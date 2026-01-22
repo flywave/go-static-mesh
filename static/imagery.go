@@ -18,10 +18,9 @@ import (
 )
 
 type ImageryProvider interface {
-	TileProvider
+	ImageTileProvider
 	TileFetcher
 
-	GetImageTile(coord [3]int) (image.Image, error)
 	GetImageBounds() vec2d.Rect
 }
 
