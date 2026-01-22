@@ -36,6 +36,10 @@ func NewContext() *Context {
 	t.height = 512
 	t.background = nil
 	t.tileProvider = nil
+	t.grid = geo.NewTileGrid(map[string]interface{}{
+		"srs":       3857,
+		"tile_size": []uint32{256, 256},
+	})
 	return t
 }
 
@@ -209,8 +213,8 @@ func (m *Context) determineZoom(bounds vec2d.Rect, center vec2d.T) int {
 
 	minX := (b.Min[1] + 180.0) / 360.0
 	maxX := (b.Max[1] + 180.0) / 360.0
-	minY := (1.0 - math.Log(math.Tan(DegreesToRadians(b.Min[0]))+(1.0/math.Cos(b.Min[1])))/math.Pi) / 2.0
-	maxY := (1.0 - math.Log(math.Tan(DegreesToRadians(b.Max[0]))+(1.0/math.Cos(b.Max[1])))/math.Pi) / 2.0
+	minY := (1.0 - math.Log(math.Tan(DegreesToRadians(b.Min[0]))+(1.0/math.Cos(b.Min[0])))/math.Pi) / 2.0
+	maxY := (1.0 - math.Log(math.Tan(DegreesToRadians(b.Max[0]))+(1.0/math.Cos(b.Max[0])))/math.Pi) / 2.0
 
 	dx := maxX - minX
 	for dx < 0 {
@@ -485,7 +489,7 @@ func (m *Context) RenderWithTransformer() (image.Image, *Transformer, error) {
 	gc.DrawRectangle(0.0, float64(trans.pHeight)-boxHeight, float64(trans.pWidth), boxHeight)
 	gc.Fill()
 	gc.SetRGBA(1.0, 1.0, 1.0, 0.75)
-	gc.DrawString(m.tileProvider.Attribution(), 4.0, float64(m.height)-4.0)
+	gc.DrawString(m.tileProvider.Attribution(), 4.0, float64(trans.pHeight)-4.0)
 
 	return img, trans, nil
 }

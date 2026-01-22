@@ -24,6 +24,7 @@ require (
 	github.com/flywave/go-geos v0.0.0-20220312005430-b3e54ee96ed7 // indirect
 	github.com/flywave/go-mst v0.0.0-20260112101636-2c1059fcfa2a // indirect
 	github.com/flywave/go-proj v0.0.0-20250607132305-d70d32f5ad2d // indirect
+	github.com/flywave/go-tesselator v0.0.0-20250908022608-9af2b7bde38f // indirect
 	github.com/flywave/imaging v1.6.5 // indirect
 	github.com/flywave/webp v1.1.2 // indirect
 	github.com/go-test/deep v1.0.7 // indirect
@@ -60,3 +61,5 @@ replace github.com/flywave/go-quantized-mesh => ../go-quantized-mesh
 replace github.com/flywave/flywave-gdal => ../flywave-gdal
 
 replace github.com/flywave/go-mst => ../go-mst
+
+replace github.com/flywave/go-tesselator => ../go-tesselator

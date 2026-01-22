@@ -25,9 +25,19 @@ type Marker struct {
 	LabelColor   color.Color
 	LabelXOffset float64
 	LabelYOffset float64
+	Height       float64
+	TipOffset    float64
 }
 
 func NewMarker(pos vec2d.T, srs geo.Proj, col color.Color, size float64) *Marker {
+	return NewMarkerWithHeight(pos, srs, col, size, 10.0)
+}
+
+func NewMarkerWithHeight(pos vec2d.T, srs geo.Proj, col color.Color, size float64, height float64) *Marker {
+	return NewMarkerWithTipOffset(pos, srs, col, size, height, 0.1)
+}
+
+func NewMarkerWithTipOffset(pos vec2d.T, srs geo.Proj, col color.Color, size float64, height float64, tipOffset float64) *Marker {
 	m := new(Marker)
 	m.Position = pos
 	m.Srs = srs
@@ -41,6 +51,8 @@ func NewMarker(pos vec2d.T, srs geo.Proj, col color.Color, size float64) *Marker
 	}
 	m.LabelXOffset = 0.5
 	m.LabelYOffset = 0.5
+	m.Height = height
+	m.TipOffset = tipOffset
 	return m
 }
 
@@ -77,6 +89,8 @@ func ParseMarkerString(s string) ([]*Marker, error) {
 	label := ""
 	labelXOffset := 0.5
 	labelYOffset := 0.5
+	height := 10.0
+	tipOffset := 0.1
 	epsg := int64(4326)
 
 	var labelColor color.Color
@@ -114,6 +128,18 @@ func ParseMarkerString(s string) ([]*Marker, error) {
 			if err != nil {
 				return nil, err
 			}
+		} else if ok, suffix := utils.HasPrefix(ss, "height:"); ok {
+			var err error
+			height, err = strconv.ParseFloat(suffix, 64)
+			if err != nil {
+				return nil, err
+			}
+		} else if ok, suffix := utils.HasPrefix(ss, "tipoffset:"); ok {
+			var err error
+			tipOffset, err = strconv.ParseFloat(suffix, 64)
+			if err != nil {
+				return nil, err
+			}
 		} else if ok, suffix := utils.HasPrefix(ss, "epsg:"); ok {
 			var err error
 			epsg, err = strconv.ParseInt(suffix, 10, 64)
@@ -125,7 +151,7 @@ func ParseMarkerString(s string) ([]*Marker, error) {
 			if err != nil {
 				return nil, err
 			}
-			m := NewMarker(vec2d.T{lat, lng}, geo.NewProj(int(epsg)), markerColor, size)
+			m := NewMarkerWithTipOffset(vec2d.T{lat, lng}, geo.NewProj(int(epsg)), markerColor, size, height, tipOffset)
 			m.Label = label
 			if labelColor != nil {
 				m.SetLabelColor(labelColor)
@@ -180,4 +206,70 @@ func (m *Marker) Draw(gc *gg.Context, trans *Transformer) {
 		gc.SetColor(m.LabelColor)
 		gc.DrawStringAnchored(m.Label, x, y-m.Size, m.LabelXOffset, m.LabelYOffset)
 	}
+}
+
+func (m *Marker) ExtrudeToMesh(meshBuilder interface{}, height float64) error {
+	if height <= 0 {
+		height = m.Height
+	}
+
+	if height <= 0 || m.Size <= 0 {
+		return nil
+	}
+
+	type meshWithVertices interface {
+		AppendVertex(x, y, z float64) uint32
+		AppendTriangle(a, b, c uint32)
+	}
+
+	mesh, ok := meshBuilder.(meshWithVertices)
+	if !ok {
+		return fmt.Errorf("invalid mesh builder type")
+	}
+
+	arcSegments := 32
+	arcRadius := m.Size / 2.0
+	arcCenterY := m.Size
+	startAngle := (90.0 + 60.0) * math.Pi / 180.0
+	endAngle := (360.0 + 90.0 - 60.0) * math.Pi / 180.0
+
+	topVertices := make([]uint32, arcSegments+2)
+	bottomVertices := make([]uint32, arcSegments+2)
+
+	for i := 0; i <= arcSegments; i++ {
+		angle := startAngle + float64(i)/float64(arcSegments)*(endAngle-startAngle)
+		x := arcRadius * math.Cos(angle)
+		y := arcCenterY + arcRadius*math.Sin(angle)
+
+		topVertices[i] = mesh.AppendVertex(m.Position[0]+x, m.Position[1]+y, height)
+		bottomVertices[i] = mesh.AppendVertex(m.Position[0]+x, m.Position[1]+y, 0)
+	}
+
+	tipIndex := arcSegments + 1
+	topTipZ := height - m.TipOffset
+	bottomTipZ := -m.TipOffset
+	topVertices[tipIndex] = mesh.AppendVertex(m.Position[0], m.Position[1], topTipZ)
+	bottomVertices[tipIndex] = mesh.AppendVertex(m.Position[0], m.Position[1], bottomTipZ)
+
+	for i := 0; i < arcSegments; i++ {
+		topTipZ := height - m.TipOffset
+		bottomTipZ := -m.TipOffset
+		topTipIdx := topVertices[tipIndex]
+		bottomTipIdx := bottomVertices[tipIndex]
+		if i == 0 {
+			topTipIdx = mesh.AppendVertex(m.Position[0], m.Position[1], topTipZ)
+			bottomTipIdx = mesh.AppendVertex(m.Position[0], m.Position[1], bottomTipZ)
+		}
+		mesh.AppendTriangle(topTipIdx, topVertices[i], topVertices[i+1])
+		mesh.AppendTriangle(bottomTipIdx, bottomVertices[i+1], bottomVertices[i])
+	}
+
+	for i := 0; i <= arcSegments; i++ {
+		next := (i + 1) % (arcSegments + 1)
+
+		mesh.AppendTriangle(topVertices[i], topVertices[next], bottomVertices[i])
+		mesh.AppendTriangle(topVertices[next], bottomVertices[next], bottomVertices[i])
+	}
+
+	return nil
 }

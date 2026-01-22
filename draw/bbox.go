@@ -49,8 +49,8 @@ func CreateBBox(nwlat float64, nwlng float64, selat float64, selng float64) (*ve
 		bbox.Min[0] = selat * math.Pi / 180.0
 		bbox.Max[0] = nwlat * math.Pi / 180.0
 	} else {
-		bbox.Min[1] = nwlat * math.Pi / 180.0
-		bbox.Max[1] = selat * math.Pi / 180.0
+		bbox.Min[0] = nwlat * math.Pi / 180.0
+		bbox.Max[0] = selat * math.Pi / 180.0
 	}
 	bbox.Min[1], bbox.Max[1] = intervalFromEndpoints(nwlng*math.Pi/180.0, selng*math.Pi/180.0)
 

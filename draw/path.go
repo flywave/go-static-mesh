@@ -2,7 +2,10 @@ package draw
 
 import (
 	"bytes"
+	"fmt"
+	"image"
 	"image/color"
+	"math"
 	"strconv"
 	"strings"
 
@@ -20,13 +23,19 @@ type Path struct {
 	Srs       geo.Proj
 	Color     color.Color
 	Weight    float64
+	Height    float64
 }
 
 func NewPath(positions []vec2d.T, srs geo.Proj, col color.Color, weight float64) *Path {
+	return NewPathWithHeight(positions, srs, col, weight, 10.0)
+}
+
+func NewPathWithHeight(positions []vec2d.T, srs geo.Proj, col color.Color, weight float64, height float64) *Path {
 	p := new(Path)
 	p.Positions = positions
 	p.Color = col
 	p.Weight = weight
+	p.Height = height
 	p.Srs = srs
 
 	return p
@@ -37,6 +46,7 @@ func ParsePathString(s string) ([]*Path, error) {
 	currentPath := new(Path)
 	currentPath.Color = color.RGBA{0xff, 0, 0, 0xff}
 	currentPath.Weight = 5.0
+	currentPath.Height = 10.0
 
 	for _, ss := range strings.Split(s, "|") {
 		if ok, suffix := utils.HasPrefix(ss, "color:"); ok {
@@ -47,6 +57,11 @@ func ParsePathString(s string) ([]*Path, error) {
 		} else if ok, suffix := utils.HasPrefix(ss, "weight:"); ok {
 			var err error
 			if currentPath.Weight, err = strconv.ParseFloat(suffix, 64); err != nil {
+				return nil, err
+			}
+		} else if ok, suffix := utils.HasPrefix(ss, "height:"); ok {
+			var err error
+			if currentPath.Height, err = strconv.ParseFloat(suffix, 64); err != nil {
 				return nil, err
 			}
 		} else if ok, suffix := utils.HasPrefix(ss, "gpx:"); ok {
@@ -122,4 +137,75 @@ func (p *Path) Draw(gc *gg.Context, trans *Transformer) {
 	}
 	gc.SetColor(p.Color)
 	gc.Stroke()
+}
+
+func (p *Path) ExtrudeToMesh(meshBuilder interface{}, height float64) error {
+	if len(p.Positions) < 2 {
+		return nil
+	}
+
+	if height <= 0 {
+		height = p.Height
+	}
+
+	type meshWithVertices interface {
+		Vertices() interface{}
+		AppendVertex(x, y, z float64) uint32
+		AppendTriangle(a, b, c uint32)
+	}
+
+	m, ok := meshBuilder.(meshWithVertices)
+	if !ok {
+		return fmt.Errorf("invalid mesh builder type")
+	}
+
+	for i := 0; i < len(p.Positions)-1; i++ {
+		start := p.Positions[i]
+		end := p.Positions[i+1]
+
+		dx := end[0] - start[0]
+		dy := end[1] - start[1]
+		length := math.Sqrt(dx*dx + dy*dy)
+
+		if length < 0.0001 {
+			continue
+		}
+
+		perpX := -dy / length
+		perpY := dx / length
+
+		offsetX := (p.Weight / 2.0) * perpX
+		offsetY := (p.Weight / 2.0) * perpY
+
+		v0 := m.AppendVertex(start[0]+offsetX, start[1]+offsetY, height)
+		v1 := m.AppendVertex(end[0]+offsetX, end[1]+offsetY, height)
+		v2 := m.AppendVertex(end[0]-offsetX, end[1]-offsetY, height)
+		v3 := m.AppendVertex(start[0]-offsetX, start[1]-offsetY, height)
+
+		v4 := m.AppendVertex(start[0]+offsetX, start[1]+offsetY, 0)
+		v5 := m.AppendVertex(end[0]+offsetX, end[1]+offsetY, 0)
+		v6 := m.AppendVertex(end[0]-offsetX, end[1]-offsetY, 0)
+		v7 := m.AppendVertex(start[0]-offsetX, start[1]-offsetY, 0)
+
+		m.AppendTriangle(v0, v1, v3)
+		m.AppendTriangle(v1, v2, v3)
+		m.AppendTriangle(v4, v7, v5)
+		m.AppendTriangle(v7, v6, v5)
+
+		m.AppendTriangle(v0, v4, v1)
+		m.AppendTriangle(v1, v4, v5)
+		m.AppendTriangle(v1, v5, v2)
+		m.AppendTriangle(v2, v5, v6)
+		m.AppendTriangle(v2, v6, v3)
+		m.AppendTriangle(v3, v6, v7)
+		m.AppendTriangle(v3, v7, v0)
+	}
+
+	return nil
+}
+
+func (p *Path) DrawToTexture(dc *gg.Context, trans *Transformer) image.Image {
+	dc.Clear()
+	p.Draw(dc, trans)
+	return dc.Image()
 }

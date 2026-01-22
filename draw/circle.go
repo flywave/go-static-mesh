@@ -1,6 +1,7 @@
 package draw
 
 import (
+	"fmt"
 	"image/color"
 	"log"
 	"math"
@@ -31,9 +32,14 @@ type Circle struct {
 	Fill     color.Color
 	Weight   float64
 	Radius   float64
+	Height   float64
 }
 
 func NewCircle(pos vec2d.T, srs geo.Proj, col, fill color.Color, radius, weight float64) *Circle {
+	return NewCircleWithHeight(pos, srs, col, fill, radius, weight, 10.0)
+}
+
+func NewCircleWithHeight(pos vec2d.T, srs geo.Proj, col, fill color.Color, radius, weight float64, height float64) *Circle {
 	return &Circle{
 		Position: pos,
 		Srs:      srs,
@@ -41,6 +47,7 @@ func NewCircle(pos vec2d.T, srs geo.Proj, col, fill color.Color, radius, weight 
 		Fill:     fill,
 		Weight:   weight,
 		Radius:   radius,
+		Height:   height,
 	}
 }
 
@@ -52,6 +59,7 @@ func ParseCircleString(s string) (circles []*Circle, err error) {
 
 	radius := 100.0
 	weight := 5.0
+	height := 10.0
 	epsg := int64(4326)
 
 	for _, ss := range strings.Split(s, "|") {
@@ -73,6 +81,10 @@ func ParseCircleString(s string) (circles []*Circle, err error) {
 			if weight, err = strconv.ParseFloat(suffix, 64); err != nil {
 				return nil, err
 			}
+		} else if ok, suffix := utils.HasPrefix(ss, "height:"); ok {
+			if height, err = strconv.ParseFloat(suffix, 64); err != nil {
+				return nil, err
+			}
 		} else if ok, suffix := utils.HasPrefix(ss, "epsg:"); ok {
 			epsg, err = strconv.ParseInt(suffix, 10, 64)
 			if err != nil {
@@ -83,7 +95,7 @@ func ParseCircleString(s string) (circles []*Circle, err error) {
 			if err != nil {
 				return nil, err
 			}
-			c := NewCircle(vec2d.T{lat, lng}, geo.NewProj(int(epsg)), col, fill, radius, weight)
+			c := NewCircleWithHeight(vec2d.T{lat, lng}, geo.NewProj(int(epsg)), col, fill, radius, weight, height)
 			circles = append(circles, c)
 		}
 	}
@@ -92,7 +104,7 @@ func ParseCircleString(s string) (circles []*Circle, err error) {
 }
 
 func (m *Circle) getLatLng(plus bool) *vec2d.T {
-	var position vec2d.T
+	position := m.Position
 	if !m.Srs.IsLatLong() {
 		position = m.Srs.TransformTo(srs_4326, []vec2d.T{position})[0]
 	}
@@ -100,7 +112,7 @@ func (m *Circle) getLatLng(plus bool) *vec2d.T {
 		R = 6371000.0
 	)
 	th := m.Radius / R
-	br := 0 / float64(Degree)
+	br := 0.0
 	if !plus {
 		th *= -1
 	}
@@ -153,4 +165,49 @@ func (m *Circle) Draw(gc *gg.Context, trans *Transformer) {
 	gc.FillPreserve()
 	gc.SetColor(m.Color)
 	gc.Stroke()
+}
+
+func (c *Circle) ExtrudeToMesh(meshBuilder interface{}, height float64) error {
+	if height <= 0 {
+		height = c.Height
+	}
+
+	if height <= 0 || c.Radius <= 0 {
+		return nil
+	}
+
+	type meshWithVertices interface {
+		AppendVertex(x, y, z float64) uint32
+		AppendTriangle(a, b, c uint32)
+	}
+
+	m, ok := meshBuilder.(meshWithVertices)
+	if !ok {
+		return fmt.Errorf("invalid mesh builder type")
+	}
+
+	segments := 32
+	topVertices := make([]uint32, segments)
+	bottomVertices := make([]uint32, segments)
+
+	for i := 0; i < segments; i++ {
+		angle := 2.0 * math.Pi * float64(i) / float64(segments)
+		x := c.Position[0] + c.Radius*math.Cos(angle)
+		y := c.Position[1] + c.Radius*math.Sin(angle)
+
+		topVertices[i] = m.AppendVertex(x, y, height)
+		bottomVertices[i] = m.AppendVertex(x, y, 0)
+	}
+
+	for i := 0; i < segments; i++ {
+		next := (i + 1) % segments
+
+		m.AppendTriangle(topVertices[0], topVertices[i], topVertices[next])
+		m.AppendTriangle(bottomVertices[0], bottomVertices[next], bottomVertices[i])
+
+		m.AppendTriangle(topVertices[i], topVertices[next], bottomVertices[i])
+		m.AppendTriangle(topVertices[next], bottomVertices[next], bottomVertices[i])
+	}
+
+	return nil
 }
