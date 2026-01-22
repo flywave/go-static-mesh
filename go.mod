@@ -7,7 +7,7 @@ toolchain go1.24.4
 require (
 	github.com/flywave/flywave-gdal v0.0.0-00010101000000-000000000000
 	github.com/flywave/gg v1.3.1-0.20210910115449-fe7fd154baa2
-	github.com/flywave/gltf v0.20.4-0.20250726101904-8f7bf4ed58d3
+	github.com/flywave/gltf v0.20.4-0.20250828104044-ebb99e75f3cc
 	github.com/flywave/go-cog v0.0.0-20250314092301-4673589220b8
 	github.com/flywave/go-geo v0.0.0-20250314091853-e818cb9de299
 	github.com/flywave/go-geoid v0.0.0-20220306024153-21126c4758a2
@@ -22,6 +22,7 @@ require (
 require (
 	github.com/flywave/go-geom v0.0.0-20250607125323-f685bf20f12c // indirect
 	github.com/flywave/go-geos v0.0.0-20220312005430-b3e54ee96ed7 // indirect
+	github.com/flywave/go-mst v0.0.0-20260112101636-2c1059fcfa2a // indirect
 	github.com/flywave/go-proj v0.0.0-20250607132305-d70d32f5ad2d // indirect
 	github.com/flywave/imaging v1.6.5 // indirect
 	github.com/flywave/webp v1.1.2 // indirect
@@ -57,3 +58,5 @@ replace github.com/flywave/go-mapbox => ../go-mapbox
 replace github.com/flywave/go-quantized-mesh => ../go-quantized-mesh
 
 replace github.com/flywave/flywave-gdal => ../flywave-gdal
+
+replace github.com/flywave/go-mst => ../go-mst
