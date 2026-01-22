@@ -1,11 +1,14 @@
 package mesh
 
 import (
+	"math"
+
+	"image"
+	"image/color"
+
 	"github.com/flywave/go-geo"
 	vec2d "github.com/flywave/go3d/float64/vec2"
 	vec3d "github.com/flywave/go3d/float64/vec3"
-	"image"
-	"image/color"
 )
 
 type Mesh struct {
@@ -114,9 +117,139 @@ func (m *Mesh) CalculateUVs(bounds vec2d.Rect) {
 }
 
 func (m *Mesh) Optimize() error {
+	if len(m.Indices) == 0 {
+		return nil
+	}
+
+	verticesToRemove := make(map[uint32]bool)
+	indicesToRemove := make(map[uint32]bool)
+
+	merged := make(map[[3]uint32]uint32)
+	for i := 0; i < len(m.Indices); i += 3 {
+		if i+2 >= len(m.Indices) {
+			break
+		}
+
+		v0 := m.Indices[i]
+		v1 := m.Indices[i+1]
+		v2 := m.Indices[i+2]
+
+		if v0 >= uint32(len(m.Vertices)) || v1 >= uint32(len(m.Vertices)) || v2 >= uint32(len(m.Vertices)) {
+			continue
+		}
+
+		if verticesToRemove[v0] || verticesToRemove[v1] || verticesToRemove[v2] {
+			continue
+		}
+
+		tri := [3]uint32{v0, v1, v2}
+		if existing, ok := merged[tri]; ok {
+			indicesToRemove[existing] = true
+			continue
+		}
+
+		merged[tri] = uint32(i / 3)
+	}
+
+	newIndices := make([]uint32, 0, len(m.Indices))
+	for i := 0; i < len(m.Indices); i++ {
+		if !indicesToRemove[uint32(i)] {
+			newIndices = append(newIndices, m.Indices[i])
+		}
+	}
+
+	newVertices := make([]vec3d.T, 0, len(m.Vertices))
+	vertexMap := make(map[uint32]uint32)
+
+	for i := 0; i < len(newIndices); i++ {
+		oldIdx := newIndices[i]
+		if _, ok := vertexMap[oldIdx]; !ok {
+			vertexMap[oldIdx] = uint32(len(newVertices))
+			newVertices = append(newVertices, m.Vertices[oldIdx])
+		}
+		newIndices[i] = vertexMap[oldIdx]
+	}
+
+	m.Vertices = newVertices
+	m.Indices = newIndices
+
+	if len(m.Normals) > 0 {
+		m.CalculateNormals()
+	}
+
+	if len(m.UVs) > 0 {
+		m.CalculateUVs(m.Bounds)
+	}
+
 	return nil
 }
 
 func (m *Mesh) Merge(other *Mesh) error {
+	if other == nil {
+		return nil
+	}
+
+	baseVertexIndex := uint32(len(m.Vertices))
+
+	m.Vertices = append(m.Vertices, other.Vertices...)
+	m.Normals = append(m.Normals, other.Normals...)
+
+	for i := range other.UVs {
+		m.UVs = append(m.UVs, other.UVs[i])
+	}
+
+	for _, idx := range other.Indices {
+		m.Indices = append(m.Indices, baseVertexIndex+idx)
+	}
+
+	for _, mat := range other.Materials {
+		m.Materials = append(m.Materials, mat)
+	}
+
+	if m.Bounds.Min[0] > other.Bounds.Min[0] || m.Bounds.Min[1] > other.Bounds.Min[1] {
+		m.Bounds.Min[0] = math.Min(m.Bounds.Min[0], other.Bounds.Min[0])
+		m.Bounds.Min[1] = math.Min(m.Bounds.Min[1], other.Bounds.Min[1])
+	}
+	if m.Bounds.Max[0] < other.Bounds.Max[0] || m.Bounds.Max[1] < other.Bounds.Max[1] {
+		m.Bounds.Max[0] = math.Max(m.Bounds.Max[0], other.Bounds.Max[0])
+		m.Bounds.Max[1] = math.Max(m.Bounds.Max[1], other.Bounds.Max[1])
+	}
+
+	for _, idx := range other.Indices {
+		m.Indices = append(m.Indices, baseVertexIndex+idx)
+	}
+
+	for _, mat := range other.Materials {
+		m.Materials = append(m.Materials, mat)
+	}
+
+	if m.Bounds.Min[0] > other.Bounds.Min[0] || m.Bounds.Min[1] > other.Bounds.Min[1] {
+		m.Bounds.Min[0] = math.Min(m.Bounds.Min[0], other.Bounds.Min[0])
+		m.Bounds.Min[1] = math.Min(m.Bounds.Min[1], other.Bounds.Min[1])
+	}
+	if m.Bounds.Max[0] < other.Bounds.Max[0] || m.Bounds.Max[1] < other.Bounds.Max[1] {
+		m.Bounds.Max[0] = math.Max(m.Bounds.Max[0], other.Bounds.Max[0])
+		m.Bounds.Max[1] = math.Max(m.Bounds.Max[1], other.Bounds.Max[1])
+	}
+
+	if m.TinMesh != nil && other.TinMesh != nil {
+		type meshWithVertices interface {
+			GetVertices() []vec3d.T
+			GetIndices() []uint32
+		}
+
+		tin1, ok1 := m.TinMesh.(meshWithVertices)
+		tin2, ok2 := other.TinMesh.(meshWithVertices)
+		if ok1 && ok2 {
+			mergedTin := &TinMesh{
+				Vertices:  append(tin1.GetVertices(), tin2.GetVertices()...),
+				Indices:   append(tin1.GetIndices(), tin2.GetIndices()...),
+				MinHeight: math.Min(tin1.GetMinHeight(), tin2.GetMinHeight()),
+				MaxHeight: math.Max(tin1.GetMaxHeight(), tin2.GetMaxHeight()),
+			}
+			m.TinMesh = mergedTin
+		}
+	}
+
 	return nil
 }

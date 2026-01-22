@@ -4,14 +4,17 @@ import (
 	"bytes"
 	"encoding/binary"
 	"fmt"
+	"io"
 	"math"
 	"os"
 	"strconv"
 	"strings"
 	"sync"
+	"time"
 
 	"github.com/flywave/go-geo"
 	"github.com/flywave/go-mst"
+	draw "github.com/flywave/go-static-mesh/draw"
 	vec2d "github.com/flywave/go3d/float64/vec2"
 	vec3d "github.com/flywave/go3d/float64/vec3"
 )
@@ -473,4 +476,232 @@ func getFileName(filepath string) string {
 		return filepath
 	}
 	return filepath[idx+1:]
+}
+
+type GeoJSON3DProvider struct {
+	geoJSON *GeoJSONProvider
+	heights map[string]float64
+	srs     geo.Proj
+	bounds  vec2d.Rect
+	mutex   sync.RWMutex
+}
+
+func NewGeoJSON3DProvider(filename string) (*GeoJSON3DProvider, error) {
+	geoJSONProvider, err := NewGeoJSONProvider(filename)
+	if err != nil {
+		return nil, err
+	}
+
+	bounds := geoJSONProvider.Bounds()
+
+	return &GeoJSON3DProvider{
+		geoJSON: geoJSONProvider,
+		heights: make(map[string]float64),
+		srs:     geo.NewProj(4326),
+		bounds:  bounds,
+	}, nil
+}
+
+func (p *GeoJSON3DProvider) GetModels(bounds vec2d.Rect) ([]Model3D, error) {
+	p.mutex.RLock()
+	defer p.mutex.RUnlock()
+
+	areas := p.geoJSON.GetAreas()
+	var models []Model3D
+
+	for _, area := range areas {
+		if !p.areaInBounds(area.Bounds(), bounds) {
+			continue
+		}
+
+		id := p.generateAreaID(area)
+		height := 10.0
+		if h, ok := p.heights[id]; ok {
+			height = h
+		}
+
+		model := Model3D{
+			ID:        id,
+			Format:    "geojson",
+			Elevation: height,
+			Mesh:      p.areaToMesh(area, height),
+			Metadata:  make(map[string]interface{}),
+		}
+
+		models = append(models, model)
+	}
+
+	return models, nil
+}
+
+func (p *GeoJSON3DProvider) GetModel(id string) (*Model3D, error) {
+	p.mutex.RLock()
+	defer p.mutex.RUnlock()
+
+	areas := p.geoJSON.GetAreas()
+	for _, area := range areas {
+		if p.generateAreaID(area) == id {
+			height := 10.0
+			if h, ok := p.heights[id]; ok {
+				height = h
+			}
+
+			return &Model3D{
+				ID:        id,
+				Format:    "geojson",
+				Elevation: height,
+				Mesh:      p.areaToMesh(area, height),
+				Metadata:  make(map[string]interface{}),
+			}, nil
+		}
+	}
+	return nil, fmt.Errorf("model not found: %s", id)
+}
+
+func (p *GeoJSON3DProvider) LoadModelFromFile(id, filepath string) error {
+	provider, err := NewGeoJSONProvider(filepath)
+	if err != nil {
+		return err
+	}
+	p.mutex.Lock()
+	p.geoJSON = provider
+	p.mutex.Unlock()
+	return nil
+}
+
+func (p *GeoJSON3DProvider) LoadModelFromData(id string, data []byte, format string) error {
+	if format != "geojson" {
+		return fmt.Errorf("unsupported format: %s (supported: geojson)", format)
+	}
+
+	provider, err := NewGeoJSONProviderFromReader(io.NopCloser(bytes.NewReader(data)))
+	if err != nil {
+		return err
+	}
+	p.mutex.Lock()
+	p.geoJSON = provider
+	p.mutex.Unlock()
+	return nil
+}
+
+func (p *GeoJSON3DProvider) SetHeight(id string, elevation float64) {
+	p.mutex.Lock()
+	defer p.mutex.Unlock()
+	p.heights[id] = elevation
+}
+
+func (p *GeoJSON3DProvider) GetHeight(id string) float64 {
+	p.mutex.RLock()
+	defer p.mutex.RUnlock()
+	if h, ok := p.heights[id]; ok {
+		return h
+	}
+	return 10.0
+}
+
+func (p *GeoJSON3DProvider) areaInBounds(areaBounds vec2d.Rect, bounds vec2d.Rect) bool {
+	if areaBounds.Min[0] < bounds.Min[0] || areaBounds.Min[1] < bounds.Min[1] {
+		return false
+	}
+	if areaBounds.Max[0] > bounds.Max[0] || areaBounds.Max[1] > bounds.Max[1] {
+		return false
+	}
+	return true
+}
+
+func (p *GeoJSON3DProvider) generateAreaID(area *draw.Area) string {
+	pos := area.Positions
+	if len(pos) > 0 {
+		return fmt.Sprintf("area_%.6f_%.6f", pos[0][0], pos[0][1])
+	}
+	return fmt.Sprintf("area_%d", time.Now().UnixNano())
+}
+
+func (p *GeoJSON3DProvider) areaToMesh(area *draw.Area, height float64) *TinMesh {
+	if len(area.Positions) < 3 {
+		return &TinMesh{
+			Vertices:  []vec3d.T{},
+			Indices:   []uint32{},
+			MinHeight: 0,
+			MaxHeight: 0,
+			Bounds:    area.Bounds(),
+			Srs:       area.Srs,
+		}
+	}
+
+	vertices := make([]vec3d.T, len(area.Positions))
+	for i, pos := range area.Positions {
+		vertices[i] = vec3d.T{pos[0], pos[1], 0}
+	}
+
+	indices := make([]uint32, 0)
+	for i := 1; i < len(area.Positions)-1; i++ {
+		indices = append(indices, 0, uint32(i), uint32(i+1))
+	}
+
+	topBase := len(vertices)
+	for i := 0; i < len(area.Positions); i++ {
+		vertices = append(vertices, vec3d.T{
+			area.Positions[i][0],
+			area.Positions[i][1],
+			height,
+		})
+	}
+
+	for i := 1; i < len(area.Positions)-1; i++ {
+		indices = append(indices,
+			uint32(topBase),
+			uint32(topBase+i),
+			uint32(topBase+i+1),
+		)
+	}
+
+	for i := 0; i < len(area.Positions)-1; i++ {
+		next := i + 1
+		if next >= len(area.Positions) {
+			next = 0
+		}
+
+		indices = append(indices,
+			uint32(i),
+			uint32(topBase+next),
+			uint32(next),
+		)
+
+		indices = append(indices,
+			uint32(i),
+			uint32(topBase+i),
+			uint32(topBase+next),
+		)
+	}
+
+	minHeight := 0.0
+	maxHeight := height
+
+	return &TinMesh{
+		Vertices:  vertices,
+		Indices:   indices,
+		MinHeight: minHeight,
+		MaxHeight: maxHeight,
+		Bounds:    area.Bounds(),
+		Srs:       area.Srs,
+	}
+}
+
+func (p *GeoJSON3DProvider) Attribution() string {
+	return ""
+}
+
+func (p *GeoJSON3DProvider) Grid() *geo.TileGrid {
+	return &geo.TileGrid{}
+}
+
+func (p *GeoJSON3DProvider) Bounds() vec2d.Rect {
+	p.mutex.RLock()
+	defer p.mutex.RUnlock()
+	return p.bounds
+}
+
+func (p *GeoJSON3DProvider) Srs() geo.Proj {
+	return p.srs
 }
