@@ -6,26 +6,27 @@ import (
 
 	"github.com/flywave/go-geo"
 	"github.com/flywave/go-static-mesh/mesh"
-	"github.com/flywave/go-static-mesh/static"
+	"github.com/flywave/go-static-mesh/mesh/builder"
+	"github.com/flywave/go-static-mesh/tile"
 	vec2d "github.com/flywave/go3d/float64/vec2"
 )
 
 func main() {
 	// 示例 1: 使用自定义配置的 CesiumQuantizedMeshProvider
-	config := static.NewDecoderConfig()
+	config := tile.NewDecoderConfig()
 	config.VertexNormals = true
 	config.WaterMask = false
 	config.Metadata = false
 	config.MaxRetries = 5
 	config.Timeout = 60
 
-	provider := static.NewCesiumQuantizedMeshProviderWithConfig(
+	provider := tile.NewCesiumQuantizedMeshProviderWithConfig(
 		"https://assets.ion.cesium.com/1/terrain/{z}/{x}/{y}.terrain",
 		config,
 	)
 
 	// 示例 2: 使用 CesiumQuantizedMeshProvider 构建 Mesh
-	builder := mesh.NewBuilder()
+	builder := builder.NewBuilder()
 	builder.SetTinMeshProvider(provider)
 
 	// 设置范围（旧金山湾区）

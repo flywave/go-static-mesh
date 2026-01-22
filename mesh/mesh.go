@@ -7,10 +7,20 @@ import (
 	"image/color"
 
 	"github.com/flywave/go-geo"
-	static "github.com/flywave/go-static-mesh/static"
+	tile "github.com/flywave/go-static-mesh/tile"
 	vec2d "github.com/flywave/go3d/float64/vec2"
 	vec3d "github.com/flywave/go3d/float64/vec3"
 )
+
+type Tile struct {
+	Coord     [3]int
+	Zoom      int
+	Data      []float64
+	Elevation *float64
+	Bounds    vec2d.Rect
+	Width     int
+	Height    int
+}
 
 type Mesh struct {
 	Vertices  []vec3d.T
@@ -244,7 +254,7 @@ func (m *Mesh) Merge(other *Mesh) error {
 		})
 
 		if ok1 && ok2 {
-			mergedTin := &static.TinMesh{
+			mergedTin := &tile.TinMesh{
 				Vertices: append(tin1.GetVertices(), tin2.GetVertices()...),
 				Indices:  append(tin1.GetIndices(), tin2.GetIndices()...),
 			}

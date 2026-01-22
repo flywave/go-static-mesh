@@ -5,7 +5,7 @@ import (
 	"fmt"
 	"os"
 
-	"github.com/flywave/go-static-mesh/static"
+	"github.com/flywave/go-static-mesh/tile"
 )
 
 func main() {
@@ -24,7 +24,7 @@ func main() {
 
 	r := bytes.NewReader(data)
 
-	provider, err := static.NewGeoTIFFRasterProviderFromReader(r)
+	provider, err := tile.NewGeoTIFFRasterProviderFromReader(r)
 	if err != nil {
 		fmt.Printf("Error creating provider from reader: %v\n", err)
 		os.Exit(1)

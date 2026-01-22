@@ -2,7 +2,7 @@ package mesh
 
 import (
 	"github.com/flywave/go-geo"
-	"github.com/flywave/go-static-mesh/static"
+	"github.com/flywave/go-static-mesh/tile"
 	vec2d "github.com/flywave/go3d/float64/vec2"
 )
 
@@ -23,12 +23,12 @@ type Source interface {
 }
 
 type RasterSource struct {
-	provider static.RasterProvider
+	provider tile.RasterProvider
 	bounds   vec2d.Rect
 	srs      geo.Proj
 }
 
-func NewRasterSource(provider static.RasterProvider) *RasterSource {
+func NewRasterSource(provider tile.RasterProvider) *RasterSource {
 	return &RasterSource{
 		provider: provider,
 		bounds:   provider.Bounds(),
@@ -62,12 +62,12 @@ func (s *RasterSource) TransformTo(srs geo.Proj) (Source, error) {
 }
 
 type TinMeshSource struct {
-	provider static.TinMeshProvider
+	provider tile.TinMeshProvider
 	bounds   vec2d.Rect
 	srs      geo.Proj
 }
 
-func NewTinMeshSource(provider static.TinMeshProvider) *TinMeshSource {
+func NewTinMeshSource(provider tile.TinMeshProvider) *TinMeshSource {
 	return &TinMeshSource{
 		provider: provider,
 		bounds:   provider.Bounds(),
@@ -101,12 +101,12 @@ func (s *TinMeshSource) TransformTo(srs geo.Proj) (Source, error) {
 }
 
 type ImageSource struct {
-	provider static.ImageryProvider
+	provider tile.ImageryProvider
 	bounds   vec2d.Rect
 	srs      geo.Proj
 }
 
-func NewImageSource(provider static.ImageryProvider) *ImageSource {
+func NewImageSource(provider tile.ImageryProvider) *ImageSource {
 	return &ImageSource{
 		provider: provider,
 		bounds:   provider.GetImageBounds(),
@@ -140,12 +140,12 @@ func (s *ImageSource) TransformTo(srs geo.Proj) (Source, error) {
 }
 
 type Model3DSource struct {
-	provider static.Model3DProvider
+	provider tile.Model3DProvider
 	bounds   vec2d.Rect
 	srs      geo.Proj
 }
 
-func NewModel3DSource(provider static.Model3DProvider) *Model3DSource {
+func NewModel3DSource(provider tile.Model3DProvider) *Model3DSource {
 	bounds := vec2d.Rect{
 		Min: vec2d.T{-90.0, -180.0},
 		Max: vec2d.T{90.0, 180.0},
