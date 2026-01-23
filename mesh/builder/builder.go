@@ -45,6 +45,8 @@ type Builder struct {
 	tileErrorHandler     TileErrorHandler
 	tileCache            mesh.TileCache
 	textureMesh          *mesh.Mesh
+	progressCallback     ProgressCallback
+	logger               mesh.Logger
 }
 
 func NewBuilder() *Builder {
@@ -59,34 +61,41 @@ func NewBuilder() *Builder {
 			MaxRetries:  3,
 			Timeout:     30 * time.Second,
 		},
+		logger: &mesh.NoOpLogger{},
 	}
 }
 
 func (b *Builder) SetTINGenerator(generator mesh.TINGenerator) {
 	b.tinGenerator = generator
+	b.logger.Debug("TIN generator set")
 }
 
 func (b *Builder) SetRasterProvider(provider interface{}) {
 	b.rasterProvider = provider
 	b.tinMeshProvider = nil
+	b.logger.Debug("Raster provider set")
 }
 
 func (b *Builder) SetTinMeshProvider(provider interface{}) {
 	b.tinMeshProvider = provider
 	b.rasterProvider = nil
+	b.logger.Debug("TIN mesh provider set")
 }
 
 func (b *Builder) AddImageryProvider(provider interface{}) {
 	b.imageryProvider = provider
+	b.logger.Debug("Imagery provider added")
 }
 
 func (b *Builder) AddGeoData(obj draw.MapObject) {
 	b.geoData = append(b.geoData, obj)
+	b.logger.Debug("Geo data added", "total", len(b.geoData))
 }
 
 func (b *Builder) SetBounds(bounds vec2d.Rect, srs geo.Proj) {
 	b.bounds = bounds
 	b.srs = srs
+	b.logger.Debug("Bounds set", "min", bounds.Min, "max", bounds.Max, "srs", srs)
 }
 
 func (b *Builder) SetZoom(zoom int) {
@@ -109,27 +118,66 @@ func (b *Builder) SetBaseElevation(elevation float64) {
 func (b *Builder) SetExtrudeGeoData(extrude bool, height float64) {
 	b.extrudeGeoData = extrude
 	b.geoDataHeight = height
+	b.logger.Debug("Geo data extrusion configured", "extrude", extrude, "height", height)
 }
 
 func (b *Builder) SetCloseMesh(close bool, thickness float64) {
 	b.closeMesh = close
 	b.baseThickness = thickness
+	b.logger.Debug("Mesh closing configured", "close", close, "thickness", thickness)
 }
 
 func (b *Builder) SetTileErrorHandler(handler TileErrorHandler) {
 	b.tileErrorHandler = handler
+	b.logger.Debug("Tile error handler set", "skipMissing", handler.SkipMissing, "maxRetries", handler.MaxRetries)
 }
 
 func (b *Builder) SetTileCache(cache mesh.TileCache) {
 	b.tileCache = cache
+	b.logger.Debug("Tile cache set")
 }
 
 func (b *Builder) SetResolution(resolution float64) {
 	b.resolution = resolution
+	b.logger.Debug("Resolution set", "value", resolution)
+}
+
+func (b *Builder) SetLogger(logger mesh.Logger) {
+	b.logger = logger
+}
+
+func (b *Builder) SetProgressCallback(callback ProgressCallback) {
+	b.progressCallback = callback
+}
+
+func (b *Builder) reportProgress(step, total uint64) bool {
+	if b.progressCallback != nil {
+		b.progressCallback.OnProgress(step, total)
+	}
+	return true
+}
+
+func (b *Builder) reportStageStart(stage string, totalSteps uint64) {
+	if b.progressCallback != nil {
+		b.progressCallback.OnStageStart(stage, totalSteps)
+	}
+}
+
+func (b *Builder) reportStageComplete(stage string) {
+	if b.progressCallback != nil {
+		b.progressCallback.OnStageComplete(stage)
+	}
+}
+
+func (b *Builder) reportProgressError(err error) {
+	if b.progressCallback != nil {
+		b.progressCallback.OnProgressError(err)
+	}
 }
 
 func (b *Builder) AddPath(path *draw.Path) {
 	b.geoData = append(b.geoData, path)
+	b.logger.Debug("Path added", "points", len(path.Positions), "total", len(b.geoData))
 }
 
 func (b *Builder) SetTexture(texture *mesh.Mesh) {
@@ -153,44 +201,95 @@ func (b *Builder) BuildForDisplayWithTexture() (*mesh.Mesh, error) {
 }
 
 func (b *Builder) build(isPrint bool) (*mesh.Mesh, error) {
+	b.logger.Info("Starting mesh build", "isPrint", isPrint)
+	b.reportStageStart("generation", 4)
+
 	if b.rasterProvider == nil && b.tinMeshProvider == nil {
-		return nil, fmt.Errorf("no raster or tin mesh provider set")
+		err := mesh.ErrNoProviderSet
+		b.logger.Error("No raster or TIN mesh provider set")
+		b.reportProgressError(err)
+		return nil, &mesh.BuildError{
+			Stage: "generation",
+			Step:  "validation",
+			Err:   err,
+		}
 	}
 
 	if b.bounds.Min[0] >= b.bounds.Max[0] || b.bounds.Min[1] >= b.bounds.Max[1] {
-		return nil, fmt.Errorf("bounds not set properly")
+		err := mesh.ErrBoundsNotSet
+		b.logger.Error("Bounds not set properly", "bounds", b.bounds)
+		b.reportProgressError(err)
+		return nil, &mesh.BuildError{
+			Stage: "generation",
+			Step:  "validation",
+			Err:   err,
+		}
 	}
+
+	b.logger.Debug("Bounds validated", "min", b.bounds.Min, "max", b.bounds.Max)
 
 	var tinMesh interface{}
 	var err error
 
+	b.reportProgress(1, 4)
 	if b.rasterProvider != nil {
+		b.logger.Info("Generating TIN from raster provider")
 		tinMesh, err = b.generateTINFromRaster()
 		if err != nil {
-			return nil, fmt.Errorf("failed to generate TIN from raster: %w", err)
+			b.logger.Error("Failed to generate TIN from raster", "error", err)
+			b.reportProgressError(err)
+			return nil, &mesh.BuildError{
+				Stage: "generation",
+				Step:  "tin_generation",
+				Err:   err,
+			}
 		}
+		b.logger.Info("TIN generated successfully from raster")
 	} else if b.tinMeshProvider != nil {
 		type providerWithMesh interface {
 			GetMesh() (interface{}, error)
 		}
 		provider, ok := b.tinMeshProvider.(providerWithMesh)
 		if ok {
+			b.logger.Info("Getting TIN mesh from provider")
 			tinMesh, err = provider.GetMesh()
 			if err != nil {
-				return nil, fmt.Errorf("failed to get TIN mesh: %w", err)
+				b.logger.Error("Failed to get TIN mesh from provider", "error", err)
+				b.reportProgressError(err)
+				return nil, &mesh.BuildError{
+					Stage: "generation",
+					Step:  "tin_mesh_retrieval",
+					Err:   err,
+				}
 			}
+			b.logger.Info("TIN mesh retrieved successfully")
 		} else {
-			return nil, fmt.Errorf("tin mesh provider does not support GetMesh")
+			err := mesh.ErrProviderNotSupported
+			b.logger.Error("TIN mesh provider does not support GetMesh")
+			b.reportProgressError(err)
+			return nil, &mesh.BuildError{
+				Stage: "generation",
+				Step:  "provider_validation",
+				Err:   err,
+			}
 		}
 	}
 
 	if tinMesh == nil {
-		return nil, fmt.Errorf("failed to generate TIN mesh")
+		err := mesh.ErrNoTINGenerated
+		b.logger.Error("Failed to generate TIN mesh")
+		b.reportProgressError(err)
+		return nil, &mesh.BuildError{
+			Stage: "generation",
+			Step:  "tin_validation",
+			Err:   err,
+		}
 	}
 
 	b.applyVerticalExaggeration(tinMesh)
 	b.applyBaseElevation(tinMesh)
 
+	b.reportProgress(2, 4)
 	type meshWithConversion interface {
 		GetVertices() []vec3d.T
 		GetIndices() []uint32
@@ -201,8 +300,17 @@ func (b *Builder) build(isPrint bool) (*mesh.Mesh, error) {
 
 	m, ok := tinMesh.(meshWithConversion)
 	if !ok {
-		return nil, fmt.Errorf("invalid TIN mesh type")
+		err := mesh.ErrInvalidProviderType
+		b.logger.Error("Invalid TIN mesh type")
+		b.reportProgressError(err)
+		return nil, &mesh.BuildError{
+			Stage: "generation",
+			Step:  "mesh_conversion",
+			Err:   err,
+		}
 	}
+
+	b.logger.Debug("Converting TIN mesh", "vertices", len(m.GetVertices()), "indices", len(m.GetIndices()))
 
 	resultMesh := &mesh.Mesh{
 		Vertices: m.GetVertices(),
@@ -212,31 +320,57 @@ func (b *Builder) build(isPrint bool) (*mesh.Mesh, error) {
 	}
 
 	resultMesh.CalculateNormals()
+	b.logger.Debug("Normals calculated", "normals", len(resultMesh.Normals))
 
+	b.reportProgress(3, 4)
 	err = b.addGeoDataToMesh(resultMesh, tinMesh, isPrint)
 	if err != nil {
-		return nil, fmt.Errorf("failed to add geo data to mesh: %w", err)
+		b.logger.Error("Failed to add geo data to mesh", "error", err)
+		b.reportProgressError(err)
+		return nil, &mesh.BuildError{
+			Stage: "generation",
+			Step:  "geo_data",
+			Err:   err,
+		}
 	}
 
+	b.logger.Info("Geo data added successfully", "objects", len(b.geoData))
+
+	b.reportProgress(4, 4)
 	if isPrint && b.closeMesh {
+		b.logger.Info("Closing mesh for printing", "thickness", b.baseThickness)
 		closer := &mesh.SimpleCloser{}
 		closedMesh, err := closer.CloseSurfaceMesh(tinMesh, b.baseThickness)
 		if err != nil {
-			return nil, fmt.Errorf("failed to close mesh: %w", err)
+			b.logger.Error("Failed to close mesh", "error", err)
+			b.reportProgressError(err)
+			return nil, &mesh.BuildError{
+				Stage: "generation",
+				Step:  "mesh_closing",
+				Err:   err,
+			}
 		}
+		b.logger.Info("Mesh closed successfully")
+		b.reportStageComplete("generation")
 		return closedMesh, nil
 	}
 
 	if b.imageryProvider != nil {
+		b.logger.Info("Generating texture from imagery provider")
 		textureMesh, err := b.GenerateTexture()
 		if err == nil {
 			resultMesh.Texture = textureMesh.Texture
 			if len(textureMesh.UVs) > 0 {
 				resultMesh.UVs = textureMesh.UVs
 			}
+			b.logger.Info("Texture generated successfully")
+		} else {
+			b.logger.Warn("Failed to generate texture", "error", err)
 		}
 	}
 
+	b.logger.Info("Mesh build completed successfully", "vertices", len(resultMesh.Vertices), "triangles", resultMesh.TriangleCount())
+	b.reportStageComplete("generation")
 	return resultMesh, nil
 }
 

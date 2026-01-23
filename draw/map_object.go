@@ -12,6 +12,8 @@ type MapObject interface {
 	SrsProj() geo.Proj
 	ExtraMarginPixels() (float64, float64, float64, float64)
 	Draw(dc *gg.Context, trans *Transformer)
+	ExtrudeToMesh(meshBuilder interface{}, height float64) error
+	ExtrudeToMeshWithResolution(meshBuilder interface{}, height, resolution float64) error
 }
 
 func CanDisplay(pos vec2d.T) bool {

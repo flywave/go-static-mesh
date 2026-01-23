@@ -1,6 +1,7 @@
 package mesh
 
 import (
+	"errors"
 	"fmt"
 	"strings"
 )
@@ -155,4 +156,36 @@ func NewDecodeError(op string, format string, err error) *MeshError {
 			"format": format,
 		},
 	}
+}
+
+var (
+	ErrNoProviderSet           = errors.New("no raster or tin mesh provider set")
+	ErrBoundsNotSet            = errors.New("bounds not set properly")
+	ErrNoTINGenerated          = errors.New("failed to generate TIN mesh")
+	ErrFailedToCloseMesh       = errors.New("failed to close mesh")
+	ErrFailedToAddGeoData      = errors.New("failed to add geo data to mesh")
+	ErrFailedToGenerateTexture = errors.New("failed to generate texture")
+	ErrInvalidProviderType     = errors.New("invalid provider type")
+	ErrProviderNotSupported    = errors.New("provider does not support required method")
+)
+
+type BuildError struct {
+	Stage   string
+	Step    string
+	Err     error
+	Context map[string]interface{}
+}
+
+func (e *BuildError) Error() string {
+	if e.Err == nil {
+		return e.Stage
+	}
+	if e.Step != "" {
+		return fmt.Sprintf("%s: %s: %v", e.Stage, e.Step, e.Err)
+	}
+	return fmt.Sprintf("%s: %v", e.Stage, e.Err)
+}
+
+func (e *BuildError) Unwrap() error {
+	return e.Err
 }

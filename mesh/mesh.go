@@ -92,6 +92,19 @@ func (m *Mesh) TriangleCount() int {
 	return len(m.Indices) / 3
 }
 
+func (m *Mesh) AppendVertex(x, y, z float64) uint32 {
+	m.Vertices = append(m.Vertices, vec3d.T{x, y, z})
+	return uint32(len(m.Vertices) - 1)
+}
+
+func (m *Mesh) AppendTriangle(a, b, c uint32) {
+	m.Indices = append(m.Indices, a, b, c)
+}
+
+func (m *Mesh) GetVertices() interface{} {
+	return m.Vertices
+}
+
 func (m *Mesh) CalculateNormals() {
 	if len(m.Normals) != len(m.Vertices) {
 		m.Normals = make([]vec3d.T, len(m.Vertices))

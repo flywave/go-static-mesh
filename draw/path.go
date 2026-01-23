@@ -10,6 +10,7 @@ import (
 	"strings"
 
 	vec2d "github.com/flywave/go3d/float64/vec2"
+	vec3d "github.com/flywave/go3d/float64/vec3"
 
 	"github.com/flywave/gg"
 	"github.com/flywave/go-geo"
@@ -18,7 +19,6 @@ import (
 )
 
 type Path struct {
-	MapObject
 	Positions []vec2d.T
 	Srs       geo.Proj
 	Color     color.Color
@@ -140,6 +140,10 @@ func (p *Path) Draw(gc *gg.Context, trans *Transformer) {
 }
 
 func (p *Path) ExtrudeToMesh(meshBuilder interface{}, height float64) error {
+	return p.ExtrudeToMeshWithResolution(meshBuilder, height, 1.0)
+}
+
+func (p *Path) ExtrudeToMeshWithResolution(meshBuilder interface{}, height, resolution float64) error {
 	return p.ExtrudeToMeshWithTerrain(meshBuilder, height, nil)
 }
 
@@ -163,13 +167,38 @@ func (p *Path) ExtrudeToMeshWithTerrain(meshBuilder interface{}, height float64,
 	}
 
 	type meshWithVertices interface {
-		Vertices() interface{}
+		GetVertices() interface{}
 		AppendVertex(x, y, z float64) uint32
 		AppendTriangle(a, b, c uint32)
 	}
 
-	m, ok := meshBuilder.(meshWithVertices)
-	if !ok {
+	var vertices []vec3d.T
+	var indices []uint32
+	var appendVertex func(x, y, z float64) uint32
+	var appendTriangle func(a, b, c uint32)
+
+	if m, ok := meshBuilder.(meshWithVertices); ok {
+		appendVertex = m.AppendVertex
+		appendTriangle = m.AppendTriangle
+	} else if m, ok := meshBuilder.(interface {
+		GetVertices() interface{}
+	}); ok {
+		if v := m.GetVertices(); v != nil {
+			if verts, ok := v.([]vec3d.T); ok {
+				vertices = verts
+				indices = []uint32{}
+				appendVertex = func(x, y, z float64) uint32 {
+					vertices = append(vertices, vec3d.T{x, y, z})
+					return uint32(len(vertices) - 1)
+				}
+				appendTriangle = func(a, b, c uint32) {
+					indices = append(indices, a, b, c)
+				}
+			}
+		}
+	}
+
+	if appendVertex == nil || appendTriangle == nil {
 		return fmt.Errorf("invalid mesh builder type")
 	}
 
@@ -191,28 +220,28 @@ func (p *Path) ExtrudeToMeshWithTerrain(meshBuilder interface{}, height float64,
 		offsetX := (p.Weight / 2.0) * perpX
 		offsetY := (p.Weight / 2.0) * perpY
 
-		v0 := m.AppendVertex(start[0]+offsetX, start[1]+offsetY, getZ(start))
-		v1 := m.AppendVertex(end[0]+offsetX, end[1]+offsetY, getZ(end))
-		v2 := m.AppendVertex(end[0]-offsetX, end[1]-offsetY, getZ(end))
-		v3 := m.AppendVertex(start[0]-offsetX, start[1]-offsetY, getZ(start))
+		v0 := appendVertex(start[0]+offsetX, start[1]+offsetY, getZ(start))
+		v1 := appendVertex(end[0]+offsetX, end[1]+offsetY, getZ(end))
+		v2 := appendVertex(end[0]-offsetX, end[1]-offsetY, getZ(end))
+		v3 := appendVertex(start[0]-offsetX, start[1]-offsetY, getZ(start))
 
-		v4 := m.AppendVertex(start[0]+offsetX, start[1]+offsetY, 0)
-		v5 := m.AppendVertex(end[0]+offsetX, end[1]+offsetY, 0)
-		v6 := m.AppendVertex(end[0]-offsetX, end[1]-offsetY, 0)
-		v7 := m.AppendVertex(start[0]-offsetX, start[1]-offsetY, 0)
+		v4 := appendVertex(start[0]+offsetX, start[1]+offsetY, 0)
+		v5 := appendVertex(end[0]+offsetX, end[1]+offsetY, 0)
+		v6 := appendVertex(end[0]-offsetX, end[1]-offsetY, 0)
+		v7 := appendVertex(start[0]-offsetX, start[1]-offsetY, 0)
 
-		m.AppendTriangle(v0, v1, v3)
-		m.AppendTriangle(v1, v2, v3)
-		m.AppendTriangle(v4, v7, v5)
-		m.AppendTriangle(v7, v6, v5)
+		appendTriangle(v0, v1, v3)
+		appendTriangle(v1, v2, v3)
+		appendTriangle(v4, v7, v5)
+		appendTriangle(v7, v6, v5)
 
-		m.AppendTriangle(v0, v4, v1)
-		m.AppendTriangle(v1, v4, v5)
-		m.AppendTriangle(v1, v5, v2)
-		m.AppendTriangle(v2, v5, v6)
-		m.AppendTriangle(v2, v6, v3)
-		m.AppendTriangle(v3, v6, v7)
-		m.AppendTriangle(v3, v7, v0)
+		appendTriangle(v0, v4, v1)
+		appendTriangle(v1, v4, v5)
+		appendTriangle(v1, v5, v2)
+		appendTriangle(v2, v5, v6)
+		appendTriangle(v2, v6, v3)
+		appendTriangle(v3, v6, v7)
+		appendTriangle(v3, v7, v0)
 	}
 
 	return nil

@@ -6,61 +6,35 @@ import (
 
 	"github.com/flywave/go-static-mesh/draw"
 	"github.com/flywave/go-static-mesh/mesh"
-	extruder "github.com/flywave/go-static-mesh/mesh/extruder"
 	vec3d "github.com/flywave/go3d/float64/vec3"
 )
 
 func (b *Builder) addGeoDataToMesh(mesh *mesh.Mesh, terrainMesh interface{}, isPrint bool) error {
 	if len(b.geoData) == 0 {
+		b.logger.Debug("No geo data to add")
 		return nil
 	}
 
 	if !b.extrudeGeoData {
+		b.logger.Debug("Geo data extrusion disabled")
 		return nil
 	}
 
-	pathExtruder := extruder.NewPathExtruder()
-	areaExtruder := extruder.NewAreaExtruder()
+	b.logger.Info("Adding geo data to mesh", "objects", len(b.geoData))
 
-	for _, geoObj := range b.geoData {
-		if meshObj, ok := geoObj.(extruder.MeshObject); ok {
-			height := b.geoDataHeight
+	for i, geoObj := range b.geoData {
+		height := b.geoDataHeight
 
-			if terrainMesh != nil {
-				height = b.sampleHeightAtPosition(geoObj, terrainMesh)
-			}
-
-			err := meshObj.ExtrudeToMesh(mesh, height)
-			if err != nil {
-				return fmt.Errorf("failed to extrude geo object: %w", err)
-			}
+		if terrainMesh != nil {
+			height = b.sampleHeightAtPosition(geoObj, terrainMesh)
 		}
 
-		if path, ok := geoObj.(*draw.Path); ok {
-			height := b.geoDataHeight
-			if terrainMesh != nil {
-				height = b.sampleHeightAtPosition(path, terrainMesh)
-			}
+		b.logger.Debug("Extruding geo object", "index", i, "height", height)
 
-			options := &extruder.ExtrudeOptions{
-				Radius: path.Weight / 2.0,
-			}
-			err := pathExtruder.ExtrudeToMeshWithResolution(path, mesh, height, options)
-			if err != nil {
-				return fmt.Errorf("failed to extrude path: %w", err)
-			}
-		}
-
-		if area, ok := geoObj.(*draw.Area); ok {
-			height := b.geoDataHeight
-			if terrainMesh != nil {
-				height = b.sampleHeightAtPosition(area, terrainMesh)
-			}
-
-			err := areaExtruder.ExtrudeToMesh(area, mesh, height)
-			if err != nil {
-				return fmt.Errorf("failed to extrude area: %w", err)
-			}
+		err := geoObj.ExtrudeToMesh(mesh, height)
+		if err != nil {
+			b.logger.Error("Failed to extrude geo object", "index", i, "error", err)
+			return fmt.Errorf("failed to extrude geo object: %w", err)
 		}
 	}
 

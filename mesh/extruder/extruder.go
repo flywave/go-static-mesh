@@ -10,13 +10,6 @@ import (
 	vec3d "github.com/flywave/go3d/float64/vec3"
 )
 
-type MeshObject interface {
-	draw.MapObject
-
-	ExtrudeToMesh(mesh *mesh.Mesh, height float64) error
-	ExtrudeToMeshWithResolution(mesh *mesh.Mesh, height, resolution float64) error
-}
-
 type ExtrudeOptions struct {
 	Resolution float64
 	Radius     float64

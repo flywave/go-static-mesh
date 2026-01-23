@@ -117,27 +117,12 @@ func ExtrudeMultipleWithBoolean(geoData []draw.MapObject, options *MultiExtrusio
 		options.BaseMesh = &mesh.Mesh{Vertices: []vec3d.T{}, Indices: []uint32{}}
 	}
 
-	pathExtruder := NewPathExtruder()
-	areaExtruder := NewAreaExtruder()
-
 	for _, geoObj := range geoData {
 		var tempMesh *mesh.Mesh
 		var err error
 
-		if meshObj, ok := geoObj.(MeshObject); ok {
-			tempMesh = &mesh.Mesh{Vertices: []vec3d.T{}, Indices: []uint32{}}
-			err = meshObj.ExtrudeToMesh(tempMesh, options.Height)
-		} else if path, ok := geoObj.(*draw.Path); ok {
-			tempMesh = &mesh.Mesh{Vertices: []vec3d.T{}, Indices: []uint32{}}
-			extruderOptions := &ExtrudeOptions{
-				Radius:   path.Weight / 2.0,
-				Segments: 16,
-			}
-			err = pathExtruder.ExtrudeToMeshWithResolution(path, tempMesh, options.Height, extruderOptions)
-		} else if area, ok := geoObj.(*draw.Area); ok {
-			tempMesh = &mesh.Mesh{Vertices: []vec3d.T{}, Indices: []uint32{}}
-			err = areaExtruder.ExtrudeToMeshWithResolution(area, tempMesh, options.Height, options.Resolution)
-		}
+		tempMesh = &mesh.Mesh{Vertices: []vec3d.T{}, Indices: []uint32{}}
+		err = geoObj.ExtrudeToMesh(tempMesh, options.Height)
 
 		if err != nil {
 			return nil, fmt.Errorf("failed to extrude geo object: %w", err)

@@ -9,6 +9,7 @@ import (
 	"strings"
 
 	vec2d "github.com/flywave/go3d/float64/vec2"
+	vec3d "github.com/flywave/go3d/float64/vec3"
 
 	"github.com/flywave/gg"
 	"github.com/flywave/go-geo"
@@ -21,7 +22,6 @@ type TerrainMesh interface {
 }
 
 type Area struct {
-	MapObject
 	Positions []vec2d.T
 	Srs       geo.Proj
 	Color     color.Color
@@ -134,6 +134,10 @@ func (p *Area) Draw(gc *gg.Context, trans *Transformer) {
 }
 
 func (a *Area) ExtrudeToMesh(meshBuilder interface{}, height float64) error {
+	return a.ExtrudeToMeshWithResolution(meshBuilder, height, 1.0)
+}
+
+func (a *Area) ExtrudeToMeshWithResolution(meshBuilder interface{}, height, resolution float64) error {
 	return a.ExtrudeToMeshWithTerrain(meshBuilder, height, nil)
 }
 
@@ -159,10 +163,36 @@ func (a *Area) ExtrudeToMeshWithTerrain(meshBuilder interface{}, height float64,
 	type meshWithVertices interface {
 		AppendVertex(x, y, z float64) uint32
 		AppendTriangle(a, b, c uint32)
+		GetVertices() interface{}
 	}
 
-	m, ok := meshBuilder.(meshWithVertices)
-	if !ok {
+	var vertices []vec3d.T
+	var indices []uint32
+	var appendVertex func(x, y, z float64) uint32
+	var appendTriangle func(a, b, c uint32)
+
+	if m, ok := meshBuilder.(meshWithVertices); ok {
+		appendVertex = m.AppendVertex
+		appendTriangle = m.AppendTriangle
+	} else if m, ok := meshBuilder.(interface {
+		GetVertices() interface{}
+	}); ok {
+		if v := m.GetVertices(); v != nil {
+			if verts, ok := v.([]vec3d.T); ok {
+				vertices = verts
+				indices = []uint32{}
+				appendVertex = func(x, y, z float64) uint32 {
+					vertices = append(vertices, vec3d.T{x, y, z})
+					return uint32(len(vertices) - 1)
+				}
+				appendTriangle = func(a, b, c uint32) {
+					indices = append(indices, a, b, c)
+				}
+			}
+		}
+	}
+
+	if appendVertex == nil || appendTriangle == nil {
 		return fmt.Errorf("invalid mesh builder type")
 	}
 
@@ -175,11 +205,11 @@ func (a *Area) ExtrudeToMeshWithTerrain(meshBuilder interface{}, height float64,
 
 	topVertexStart := uint32(0)
 	for _, pos := range a.Positions {
-		m.AppendVertex(pos[0], pos[1], getZ(pos))
+		appendVertex(pos[0], pos[1], getZ(pos))
 	}
 
 	for i := 0; i < len(topIndices); i += 3 {
-		m.AppendTriangle(topVertexStart+uint32(topIndices[i]), topVertexStart+uint32(topIndices[i+1]), topVertexStart+uint32(topIndices[i+2]))
+		appendTriangle(topVertexStart+uint32(topIndices[i]), topVertexStart+uint32(topIndices[i+1]), topVertexStart+uint32(topIndices[i+2]))
 	}
 
 	bottomIndices, _, err := tesselator.Tesselate([]tesselator.Contour{
@@ -191,14 +221,14 @@ func (a *Area) ExtrudeToMeshWithTerrain(meshBuilder interface{}, height float64,
 
 	bottomVertexStart := uint32(len(a.Positions))
 	for _, pos := range a.Positions {
-		m.AppendVertex(pos[0], pos[1], 0)
+		appendVertex(pos[0], pos[1], 0)
 	}
 
 	for i := 0; i < len(bottomIndices); i += 3 {
 		idx0 := bottomVertexStart + uint32(bottomIndices[i])
 		idx1 := bottomVertexStart + uint32(bottomIndices[i+1])
 		idx2 := bottomVertexStart + uint32(bottomIndices[i+2])
-		m.AppendTriangle(idx2, idx1, idx0)
+		appendTriangle(idx2, idx1, idx0)
 	}
 
 	for i := 0; i < len(a.Positions); i++ {
@@ -209,8 +239,8 @@ func (a *Area) ExtrudeToMeshWithTerrain(meshBuilder interface{}, height float64,
 		bottomIdx := bottomVertexStart + uint32(i)
 		bottomNextIdx := bottomVertexStart + uint32(next)
 
-		m.AppendTriangle(bottomIdx, topIdx, bottomNextIdx)
-		m.AppendTriangle(bottomNextIdx, topIdx, topNextIdx)
+		appendTriangle(bottomIdx, topIdx, bottomNextIdx)
+		appendTriangle(bottomNextIdx, topIdx, topNextIdx)
 	}
 
 	return nil
