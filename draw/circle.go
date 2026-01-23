@@ -190,6 +190,16 @@ func (c *Circle) ExtrudeToMeshWithTerrain(meshBuilder interface{}, height float6
 		return height
 	}
 
+	getBottomZ := func(pos vec2d.T) float64 {
+		if terrain != nil {
+			terrainHeight := sampleTerrainHeight(pos, terrain)
+			if terrainHeight > 0 {
+				return terrainHeight
+			}
+		}
+		return 0
+	}
+
 	type meshWithVertices interface {
 		AppendVertex(x, y, z float64) uint32
 		AppendTriangle(a, b, c uint32)
@@ -208,9 +218,10 @@ func (c *Circle) ExtrudeToMeshWithTerrain(meshBuilder interface{}, height float6
 		angle := 2.0 * math.Pi * float64(i) / float64(segments)
 		x := c.Position[0] + c.Radius*math.Cos(angle)
 		y := c.Position[1] + c.Radius*math.Sin(angle)
+		pos := vec2d.T{x, y}
 
-		topVertices[i] = m.AppendVertex(x, y, getZ(vec2d.T{x, y}))
-		bottomVertices[i] = m.AppendVertex(x, y, 0)
+		topVertices[i] = m.AppendVertex(x, y, getZ(pos))
+		bottomVertices[i] = m.AppendVertex(x, y, getBottomZ(pos))
 	}
 
 	for i := 0; i < segments; i++ {

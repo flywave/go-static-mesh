@@ -163,6 +163,16 @@ func (m *ImageMarker) ExtrudeToMeshWithTerrain(meshBuilder interface{}, height f
 		return height
 	}
 
+	getBottomZ := func(pos vec2d.T) float64 {
+		if terrain != nil {
+			terrainHeight := sampleTerrainHeight(pos, terrain)
+			if terrainHeight > 0 {
+				return terrainHeight
+			}
+		}
+		return 0
+	}
+
 	type meshWithVertices interface {
 		AppendVertex(x, y, z float64) uint32
 		AppendTriangle(a, b, c uint32)
@@ -177,8 +187,6 @@ func (m *ImageMarker) ExtrudeToMeshWithTerrain(meshBuilder interface{}, height f
 	width := float64(size.X)
 	imgHeight := float64(size.Y)
 
-	posZ := getZ(m.Position)
-
 	corners := []vec2d.T{
 		{m.Position[0], m.Position[1]},
 		{m.Position[0] + width, m.Position[1]},
@@ -186,30 +194,29 @@ func (m *ImageMarker) ExtrudeToMeshWithTerrain(meshBuilder interface{}, height f
 		{m.Position[0], m.Position[1] + imgHeight},
 	}
 
-	v0 := mesh.AppendVertex(corners[0][0], corners[0][1], posZ)
-	v1 := mesh.AppendVertex(corners[1][0], corners[1][1], posZ)
-	v2 := mesh.AppendVertex(corners[2][0], corners[2][1], posZ)
-	v3 := mesh.AppendVertex(corners[3][0], corners[3][1], posZ)
+	v0 := mesh.AppendVertex(corners[0][0], corners[0][1], getZ(corners[0]))
+	v1 := mesh.AppendVertex(corners[1][0], corners[1][1], getZ(corners[1]))
+	v2 := mesh.AppendVertex(corners[2][0], corners[2][1], getZ(corners[2]))
+	v3 := mesh.AppendVertex(corners[3][0], corners[3][1], getZ(corners[3]))
 
-	bottomZ := 0.0
-
-	v4 := mesh.AppendVertex(corners[0][0], corners[0][1], bottomZ)
-	v5 := mesh.AppendVertex(corners[1][0], corners[1][1], bottomZ)
-	v6 := mesh.AppendVertex(corners[2][0], corners[2][1], bottomZ)
-	v7 := mesh.AppendVertex(corners[3][0], corners[3][1], bottomZ)
+	v4 := mesh.AppendVertex(corners[0][0], corners[0][1], getBottomZ(corners[0]))
+	v5 := mesh.AppendVertex(corners[1][0], corners[1][1], getBottomZ(corners[1]))
+	v6 := mesh.AppendVertex(corners[2][0], corners[2][1], getBottomZ(corners[2]))
+	v7 := mesh.AppendVertex(corners[3][0], corners[3][1], getBottomZ(corners[3]))
 
 	mesh.AppendTriangle(v0, v1, v3)
 	mesh.AppendTriangle(v1, v2, v3)
 	mesh.AppendTriangle(v4, v7, v5)
 	mesh.AppendTriangle(v5, v6, v7)
 
-	mesh.AppendTriangle(v0, v4, v1)
-	mesh.AppendTriangle(v1, v4, v5)
-	mesh.AppendTriangle(v1, v5, v2)
-	mesh.AppendTriangle(v2, v5, v6)
-	mesh.AppendTriangle(v2, v6, v3)
-	mesh.AppendTriangle(v3, v6, v7)
-	mesh.AppendTriangle(v3, v7, v0)
+	mesh.AppendTriangle(v4, v0, v1)
+	mesh.AppendTriangle(v4, v1, v5)
+	mesh.AppendTriangle(v5, v1, v2)
+	mesh.AppendTriangle(v5, v2, v6)
+	mesh.AppendTriangle(v6, v2, v3)
+	mesh.AppendTriangle(v6, v3, v7)
+	mesh.AppendTriangle(v7, v3, v0)
+	mesh.AppendTriangle(v7, v0, v4)
 
 	return nil
 }

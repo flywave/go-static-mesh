@@ -231,6 +231,16 @@ func (m *Marker) ExtrudeToMeshWithTerrain(meshBuilder interface{}, height float6
 		return height
 	}
 
+	getBottomZ := func(pos vec2d.T) float64 {
+		if terrain != nil {
+			terrainHeight := sampleTerrainHeight(pos, terrain)
+			if terrainHeight > 0 {
+				return terrainHeight
+			}
+		}
+		return 0
+	}
+
 	type meshWithVertices interface {
 		AppendVertex(x, y, z float64) uint32
 		AppendTriangle(a, b, c uint32)
@@ -257,34 +267,26 @@ func (m *Marker) ExtrudeToMeshWithTerrain(meshBuilder interface{}, height float6
 
 		pos := vec2d.T{m.Position[0] + x, m.Position[1] + y}
 		topVertices[i] = mesh.AppendVertex(pos[0], pos[1], getZ(pos))
-		bottomVertices[i] = mesh.AppendVertex(pos[0], pos[1], 0)
+		bottomVertices[i] = mesh.AppendVertex(pos[0], pos[1], getBottomZ(pos))
 	}
 
 	tipIndex := arcSegments + 1
 	topTipZ := getZ(m.Position)
-	bottomTipZ := -m.TipOffset
+	bottomTipZ := getBottomZ(m.Position) - m.TipOffset
 	topVertices[tipIndex] = mesh.AppendVertex(m.Position[0], m.Position[1], topTipZ)
 	bottomVertices[tipIndex] = mesh.AppendVertex(m.Position[0], m.Position[1], bottomTipZ)
 
 	for i := 0; i < arcSegments; i++ {
 		topTipIdx := topVertices[tipIndex]
 		bottomTipIdx := bottomVertices[tipIndex]
-		if i == 0 {
-			angle := startAngle + float64(0)/float64(arcSegments)*(endAngle-startAngle)
-			x := arcRadius * math.Cos(angle)
-			y := arcCenterY + arcRadius*math.Sin(angle)
-			pos := vec2d.T{m.Position[0] + x, m.Position[1] + y}
-			topTipIdx = mesh.AppendVertex(pos[0], pos[1], getZ(pos))
-			bottomTipIdx = mesh.AppendVertex(pos[0], pos[1], bottomTipZ)
-		}
 		mesh.AppendTriangle(topTipIdx, topVertices[i], topVertices[i+1])
-		mesh.AppendTriangle(bottomTipIdx, bottomVertices[i+1], bottomVertices[i])
+		mesh.AppendTriangle(bottomTipIdx, bottomVertices[i], bottomVertices[i+1])
 	}
 
-	for i := 0; i <= arcSegments; i++ {
-		next := (i + 1) % (arcSegments + 1)
+	for i := 0; i < arcSegments; i++ {
+		next := i + 1
 
-		mesh.AppendTriangle(topVertices[i], topVertices[next], bottomVertices[i])
+		mesh.AppendTriangle(topVertices[next], topVertices[i], bottomVertices[i])
 		mesh.AppendTriangle(topVertices[next], bottomVertices[next], bottomVertices[i])
 	}
 
