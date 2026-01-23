@@ -47,6 +47,7 @@ type Builder struct {
 	textureMesh          *mesh.Mesh
 	progressCallback     ProgressCallback
 	logger               mesh.Logger
+	closeMeshOptions     *mesh.CloseMeshOptions
 }
 
 func NewBuilder() *Builder {
@@ -61,7 +62,8 @@ func NewBuilder() *Builder {
 			MaxRetries:  3,
 			Timeout:     30 * time.Second,
 		},
-		logger: &mesh.NoOpLogger{},
+		logger:           &mesh.NoOpLogger{},
+		closeMeshOptions: mesh.NewDefaultCloseMeshOptions(),
 	}
 }
 
@@ -124,6 +126,11 @@ func (b *Builder) SetExtrudeGeoData(extrude bool, height float64) {
 func (b *Builder) SetCloseMesh(close bool, thickness float64) {
 	b.closeMesh = close
 	b.baseThickness = thickness
+	if b.closeMeshOptions == nil {
+		b.closeMeshOptions = mesh.NewDefaultCloseMeshOptions()
+	}
+	b.closeMeshOptions.Enabled = close
+	b.closeMeshOptions.Thickness = thickness
 	b.logger.Debug("Mesh closing configured", "close", close, "thickness", thickness)
 }
 
@@ -140,6 +147,16 @@ func (b *Builder) SetTileCache(cache mesh.TileCache) {
 func (b *Builder) SetResolution(resolution float64) {
 	b.resolution = resolution
 	b.logger.Debug("Resolution set", "value", resolution)
+}
+
+func (b *Builder) SetCloseMeshOptions(options *mesh.CloseMeshOptions) {
+	b.closeMeshOptions = options
+	b.closeMesh = options != nil && options.Enabled
+	b.logger.Debug("Close mesh options set", "enabled", b.closeMesh, "thickness", b.baseThickness)
+}
+
+func (b *Builder) GetCloseMeshOptions() *mesh.CloseMeshOptions {
+	return b.closeMeshOptions
 }
 
 func (b *Builder) SetLogger(logger mesh.Logger) {
@@ -337,10 +354,10 @@ func (b *Builder) build(isPrint bool) (*mesh.Mesh, error) {
 	b.logger.Info("Geo data added successfully", "objects", len(b.geoData))
 
 	b.reportProgress(4, 4)
-	if isPrint && b.closeMesh {
+	if b.closeMesh && b.closeMeshOptions != nil && b.closeMeshOptions.Enabled {
 		b.logger.Info("Closing mesh for printing", "thickness", b.baseThickness)
-		closer := &mesh.SimpleCloser{}
-		closedMesh, err := closer.CloseSurfaceMesh(tinMesh, b.baseThickness)
+		closer := mesh.NewTexturedCloser()
+		closedMesh, err := closer.CloseSurfaceMeshWithOptions(tinMesh, b.closeMeshOptions)
 		if err != nil {
 			b.logger.Error("Failed to close mesh", "error", err)
 			b.reportProgressError(err)
