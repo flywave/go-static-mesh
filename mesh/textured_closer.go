@@ -184,3 +184,63 @@ func (c *TexturedCloser) calculateBottomUVs(vertices []vec3d.T, bounds vec2d.Rec
 
 	return uvs
 }
+
+func (c *TexturedCloser) CloseUnifiedMesh(mesh *Mesh, baseHeight float64) (*Mesh, error) {
+	if mesh == nil {
+		return nil, nil
+	}
+
+	vertices := mesh.Vertices
+	indices := mesh.Indices
+
+	if len(vertices) == 0 {
+		return nil, nil
+	}
+
+	bottomVertices := make([]vec3d.T, len(vertices))
+	for i := 0; i < len(vertices); i++ {
+		bottomVertices[i] = vec3d.T{
+			vertices[i][0],
+			vertices[i][1],
+			baseHeight,
+		}
+	}
+
+	newVertices := make([]vec3d.T, len(vertices)*2)
+	copy(newVertices, vertices)
+	copy(newVertices[len(vertices):], bottomVertices)
+
+	newIndices := make([]uint32, len(indices)*2)
+	copy(newIndices, indices)
+
+	offset := uint32(len(vertices))
+
+	for i := 0; i < len(indices); i += 3 {
+		idx := len(indices) + i
+		newIndices[idx+0] = indices[i+2] + offset
+		newIndices[idx+1] = indices[i+1] + offset
+		newIndices[idx+2] = indices[i+0] + offset
+	}
+
+	result := &Mesh{
+		Vertices: newVertices,
+		Indices:  newIndices,
+		Bounds:   mesh.Bounds,
+		Srs:      mesh.Srs,
+	}
+
+	if c.options.BottomTextureImage != nil || c.options.BottomColor != nil {
+		result.Texture = c.options.BottomTextureImage
+		result.UVs = c.calculateBottomUVs(bottomVertices, mesh.Bounds,
+			c.options.BottomTextureTilingU,
+			c.options.BottomTextureTilingV)
+		result.Materials = []Material{*NewMaterial()}
+		if c.options.BottomColor != nil {
+			result.Materials[0].Diffuse = c.options.BottomColor
+		}
+	}
+
+	result.CalculateNormals()
+
+	return result, nil
+}

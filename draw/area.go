@@ -150,14 +150,22 @@ func (a *Area) ExtrudeToMeshWithTerrain(meshBuilder interface{}, height float64,
 		height = a.Height
 	}
 
-	getZ := func(pos vec2d.T) float64 {
+	vertexBottomHeights := make([]float64, len(a.Positions))
+	for i, pos := range a.Positions {
 		if terrain != nil {
 			terrainHeight := sampleTerrainHeight(pos, terrain)
-			if terrainHeight > 0 {
-				return terrainHeight + height
-			}
+			vertexBottomHeights[i] = terrainHeight
+		} else {
+			vertexBottomHeights[i] = 0.0
 		}
-		return height
+	}
+
+	getBottomZ := func(idx int) float64 {
+		return vertexBottomHeights[idx]
+	}
+
+	getTopZ := func(idx int) float64 {
+		return vertexBottomHeights[idx] + height
 	}
 
 	type meshWithVertices interface {
@@ -197,15 +205,15 @@ func (a *Area) ExtrudeToMeshWithTerrain(meshBuilder interface{}, height float64,
 	}
 
 	topIndices, _, err := tesselator.Tesselate([]tesselator.Contour{
-		makeContourFromPositions(a.Positions, getZ(a.Positions[0])),
+		makeContourFromPositions(a.Positions, getTopZ(0)),
 	}, tesselator.WindingRuleOdd)
 	if err != nil {
 		return fmt.Errorf("failed to triangulate top area: %w", err)
 	}
 
 	topVertexStart := uint32(0)
-	for _, pos := range a.Positions {
-		appendVertex(pos[0], pos[1], getZ(pos))
+	for i, pos := range a.Positions {
+		appendVertex(pos[0], pos[1], getTopZ(i))
 	}
 
 	for i := 0; i < len(topIndices); i += 3 {
@@ -220,8 +228,8 @@ func (a *Area) ExtrudeToMeshWithTerrain(meshBuilder interface{}, height float64,
 	}
 
 	bottomVertexStart := uint32(len(a.Positions))
-	for _, pos := range a.Positions {
-		appendVertex(pos[0], pos[1], 0)
+	for i, pos := range a.Positions {
+		appendVertex(pos[0], pos[1], getBottomZ(i))
 	}
 
 	for i := 0; i < len(bottomIndices); i += 3 {

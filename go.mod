@@ -11,6 +11,7 @@ require (
 	github.com/flywave/go-cog v0.0.0-20250314092301-4673589220b8
 	github.com/flywave/go-geo v0.0.0-20250314091853-e818cb9de299
 	github.com/flywave/go-geoid v0.0.0-20220306024153-21126c4758a2
+	github.com/flywave/go-geos v0.0.0-20220312005430-b3e54ee96ed7
 	github.com/flywave/go-gpx v1.2.2-0.20211027141055-7fa376dde073
 	github.com/flywave/go-mapbox v0.0.0-00010101000000-000000000000
 	github.com/flywave/go-mst v0.0.0-20260112101636-2c1059fcfa2a
@@ -23,7 +24,6 @@ require (
 
 require (
 	github.com/flywave/go-geom v0.0.0-20250607125323-f685bf20f12c // indirect
-	github.com/flywave/go-geos v0.0.0-20220312005430-b3e54ee96ed7 // indirect
 	github.com/flywave/go-proj v0.0.0-20250607132305-d70d32f5ad2d // indirect
 	github.com/flywave/imaging v1.6.5 // indirect
 	github.com/flywave/webp v1.1.2 // indirect

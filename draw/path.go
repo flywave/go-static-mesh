@@ -156,14 +156,12 @@ func (p *Path) ExtrudeToMeshWithTerrain(meshBuilder interface{}, height float64,
 		height = p.Height
 	}
 
-	getZ := func(pos vec2d.T) float64 {
+	getBottomZ := func(pos vec2d.T) float64 {
 		if terrain != nil {
 			terrainHeight := sampleTerrainHeight(pos, terrain)
-			if terrainHeight > 0 {
-				return terrainHeight + height
-			}
+			return terrainHeight
 		}
-		return height
+		return 0.0
 	}
 
 	type meshWithVertices interface {
@@ -220,15 +218,20 @@ func (p *Path) ExtrudeToMeshWithTerrain(meshBuilder interface{}, height float64,
 		offsetX := (p.Weight / 2.0) * perpX
 		offsetY := (p.Weight / 2.0) * perpY
 
-		v0 := appendVertex(start[0]+offsetX, start[1]+offsetY, getZ(start))
-		v1 := appendVertex(end[0]+offsetX, end[1]+offsetY, getZ(end))
-		v2 := appendVertex(end[0]-offsetX, end[1]-offsetY, getZ(end))
-		v3 := appendVertex(start[0]-offsetX, start[1]-offsetY, getZ(start))
+		startBottomZ := getBottomZ(start)
+		endBottomZ := getBottomZ(end)
+		startTopZ := startBottomZ + height
+		endTopZ := endBottomZ + height
 
-		v4 := appendVertex(start[0]+offsetX, start[1]+offsetY, 0)
-		v5 := appendVertex(end[0]+offsetX, end[1]+offsetY, 0)
-		v6 := appendVertex(end[0]-offsetX, end[1]-offsetY, 0)
-		v7 := appendVertex(start[0]-offsetX, start[1]-offsetY, 0)
+		v0 := appendVertex(start[0]+offsetX, start[1]+offsetY, startTopZ)
+		v1 := appendVertex(end[0]+offsetX, end[1]+offsetY, endTopZ)
+		v2 := appendVertex(end[0]-offsetX, end[1]-offsetY, endTopZ)
+		v3 := appendVertex(start[0]-offsetX, start[1]-offsetY, startTopZ)
+
+		v4 := appendVertex(start[0]+offsetX, start[1]+offsetY, endBottomZ)
+		v5 := appendVertex(end[0]+offsetX, end[1]+offsetY, startBottomZ)
+		v6 := appendVertex(end[0]-offsetX, end[1]-offsetY, endBottomZ)
+		v7 := appendVertex(start[0]-offsetX, start[1]-offsetY, startBottomZ)
 
 		appendTriangle(v0, v1, v3)
 		appendTriangle(v1, v2, v3)

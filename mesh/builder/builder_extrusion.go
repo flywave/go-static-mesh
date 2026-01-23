@@ -22,16 +22,38 @@ func (b *Builder) addGeoDataToMesh(mesh *mesh.Mesh, terrainMesh interface{}, isP
 
 	b.logger.Info("Adding geo data to mesh", "objects", len(b.geoData))
 
+	clipper := draw.NewClipper()
+
 	for i, geoObj := range b.geoData {
+		var processedObj draw.MapObject = geoObj
+
+		if path, ok := geoObj.(*draw.Path); ok {
+			clipped := clipper.ClipPathToBounds(path, b.bounds)
+			if clipped != nil {
+				processedObj = clipped
+			} else {
+				b.logger.Debug("Path fully outside bounds, skipping", "index", i)
+				continue
+			}
+		} else if area, ok := geoObj.(*draw.Area); ok {
+			clipped := clipper.ClipAreaToBounds(area, b.bounds)
+			if clipped != nil {
+				processedObj = clipped
+			} else {
+				b.logger.Debug("Area fully outside bounds, skipping", "index", i)
+				continue
+			}
+		}
+
 		height := b.geoDataHeight
 
 		if terrainMesh != nil {
-			height = b.sampleHeightAtPosition(geoObj, terrainMesh)
+			height = b.sampleHeightAtPosition(processedObj, terrainMesh)
 		}
 
 		b.logger.Debug("Extruding geo object", "index", i, "height", height)
 
-		err := geoObj.ExtrudeToMesh(mesh, height)
+		err := processedObj.ExtrudeToMesh(mesh, height)
 		if err != nil {
 			b.logger.Error("Failed to extrude geo object", "index", i, "error", err)
 			return fmt.Errorf("failed to extrude geo object: %w", err)

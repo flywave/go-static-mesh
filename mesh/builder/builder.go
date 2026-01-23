@@ -192,6 +192,57 @@ func (b *Builder) reportProgressError(err error) {
 	}
 }
 
+func (b *Builder) resolveBounds() {
+	if b.bounds.Min[0] < b.bounds.Max[0] && b.bounds.Min[1] < b.bounds.Max[1] {
+		b.logger.Debug("Bounds already set", "bounds", b.bounds)
+		return
+	}
+
+	type providerWithBounds interface {
+		Bounds() vec2d.Rect
+	}
+
+	boundsFound := false
+
+	if b.rasterProvider != nil {
+		if provider, ok := b.rasterProvider.(providerWithBounds); ok {
+			providerBounds := provider.Bounds()
+			b.bounds = providerBounds
+			boundsFound = true
+			b.logger.Info("Bounds resolved from raster provider", "bounds", b.bounds)
+		}
+	}
+
+	if !boundsFound && b.imageryProvider != nil {
+		if provider, ok := b.imageryProvider.(providerWithBounds); ok {
+			providerBounds := provider.Bounds()
+			b.bounds = providerBounds
+			boundsFound = true
+			b.logger.Info("Bounds resolved from imagery provider", "bounds", b.bounds)
+		}
+	}
+
+	if b.srs == nil && boundsFound {
+		type providerWithSrs interface {
+			Srs() geo.Proj
+		}
+
+		if b.rasterProvider != nil {
+			if provider, ok := b.rasterProvider.(providerWithSrs); ok {
+				b.srs = provider.Srs()
+				b.logger.Info("SRS resolved from raster provider")
+			}
+		}
+
+		if b.srs == nil && b.imageryProvider != nil {
+			if provider, ok := b.imageryProvider.(providerWithSrs); ok {
+				b.srs = provider.Srs()
+				b.logger.Info("SRS resolved from imagery provider")
+			}
+		}
+	}
+}
+
 func (b *Builder) AddPath(path *draw.Path) {
 	b.geoData = append(b.geoData, path)
 	b.logger.Debug("Path added", "points", len(path.Positions), "total", len(b.geoData))
@@ -232,6 +283,10 @@ func (b *Builder) build(isPrint bool) (*mesh.Mesh, error) {
 		}
 	}
 
+	b.logger.Debug("Provider set")
+
+	b.resolveBounds()
+
 	if b.bounds.Min[0] >= b.bounds.Max[0] || b.bounds.Min[1] >= b.bounds.Max[1] {
 		err := mesh.ErrBoundsNotSet
 		b.logger.Error("Bounds not set properly", "bounds", b.bounds)
@@ -243,7 +298,9 @@ func (b *Builder) build(isPrint bool) (*mesh.Mesh, error) {
 		}
 	}
 
-	b.logger.Debug("Bounds validated", "min", b.bounds.Min, "max", b.bounds.Max)
+	b.logger.Debug("Bounds validated", "min", b.bounds.Min, "max", b.bounds.Max, "source", "resolved")
+
+	b.resolveBounds()
 
 	var tinMesh interface{}
 	var err error
@@ -355,11 +412,21 @@ func (b *Builder) build(isPrint bool) (*mesh.Mesh, error) {
 
 	b.reportProgress(4, 4)
 	if b.closeMesh && b.closeMeshOptions != nil && b.closeMeshOptions.Enabled {
-		b.logger.Info("Closing mesh for printing", "thickness", b.baseThickness)
+		b.logger.Info("Closing unified mesh for printing", "thickness", b.baseThickness)
+
+		globalMinHeight := math.Inf(1)
+		for _, v := range resultMesh.Vertices {
+			if v[2] < globalMinHeight {
+				globalMinHeight = v[2]
+			}
+		}
+
+		unifiedBaseHeight := globalMinHeight - b.baseThickness
+
 		closer := mesh.NewTexturedCloser()
-		closedMesh, err := closer.CloseSurfaceMeshWithOptions(tinMesh, b.closeMeshOptions)
+		closedMesh, err := closer.CloseUnifiedMesh(resultMesh, unifiedBaseHeight)
 		if err != nil {
-			b.logger.Error("Failed to close mesh", "error", err)
+			b.logger.Error("Failed to close unified mesh", "error", err)
 			b.reportProgressError(err)
 			return nil, &mesh.BuildError{
 				Stage: "generation",
@@ -367,7 +434,7 @@ func (b *Builder) build(isPrint bool) (*mesh.Mesh, error) {
 				Err:   err,
 			}
 		}
-		b.logger.Info("Mesh closed successfully")
+		b.logger.Info("Unified mesh closed successfully")
 		b.reportStageComplete("generation")
 		return closedMesh, nil
 	}
