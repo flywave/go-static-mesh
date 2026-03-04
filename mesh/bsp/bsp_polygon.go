@@ -129,8 +129,16 @@ func (p *BSPPlane) SplitPolygon(poly *BSPPolygon, coplanarFront, coplanarBack, f
 func (p *BSPPlane) LineIntersection(a, b vec3d.T) vec3d.T {
 	ab := vec3d.Sub(&b, &a)
 	dotNormalAb := vec3d.Dot(&p.Normal, &ab)
+
+	const EPSILON = 1e-10
+	if math.Abs(dotNormalAb) < EPSILON {
+		return a
+	}
+
 	dotNormalA := vec3d.Dot(&p.Normal, &a)
 	t := (-p.Distance - dotNormalA) / dotNormalAb
+
+	t = math.Max(0, math.Min(1, t))
 
 	abScaled := vec3d.T{
 		ab[0] * t,

@@ -86,7 +86,9 @@ func (b *Builder) sampleHeightAtPosition(obj draw.MapObject, terrainMesh interfa
 	minDist := math.Inf(1)
 	sampledHeight := b.geoDataHeight
 
-	for i := 0; i < len(vertices); i += 10 {
+	sampleStep := int(math.Max(1, float64(len(vertices))/1000.0))
+
+	for i := 0; i < len(vertices); i += sampleStep {
 		v := vertices[i]
 		dist := math.Sqrt(
 			math.Pow(v[0]-centerX, 2) +

@@ -146,3 +146,156 @@ func TestDetermineZoom(t *testing.T) {
 		t.Errorf("zoom out of range: %d", zoom)
 	}
 }
+
+func TestBuilderSetTinMeshProvider(t *testing.T) {
+	builder := NewBuilder()
+
+	mockProvider := struct{}{}
+	builder.SetTinMeshProvider(mockProvider)
+
+	if builder.tinMeshProvider != mockProvider {
+		t.Error("TIN mesh provider not set correctly")
+	}
+	if builder.rasterProvider != nil {
+		t.Error("raster provider should be nil when TIN mesh provider is set")
+	}
+}
+
+func TestBuilderAddImageryProvider(t *testing.T) {
+	builder := NewBuilder()
+
+	mockProvider := struct{}{}
+	builder.AddImageryProvider(mockProvider)
+
+	if builder.imageryProvider != mockProvider {
+		t.Error("imagery provider not added correctly")
+	}
+}
+
+func TestBuilderSetVerticalExaggeration(t *testing.T) {
+	builder := NewBuilder()
+	scale := 2.5
+
+	builder.SetVerticalExaggeration(scale)
+
+	if builder.verticalExaggeration != scale {
+		t.Errorf("vertical exaggeration not set correctly, got %f, want %f", builder.verticalExaggeration, scale)
+	}
+}
+
+func TestBuilderSetBaseElevation(t *testing.T) {
+	builder := NewBuilder()
+	elevation := 100.0
+
+	builder.SetBaseElevation(elevation)
+
+	if builder.baseElevation != elevation {
+		t.Errorf("base elevation not set correctly, got %f, want %f", builder.baseElevation, elevation)
+	}
+}
+
+func TestBuilderSetExtrudeGeoData(t *testing.T) {
+	builder := NewBuilder()
+
+	builder.SetExtrudeGeoData(true, 10.0)
+
+	if !builder.extrudeGeoData || builder.geoDataHeight != 10.0 {
+		t.Error("extrude geo data parameters not set correctly")
+	}
+}
+
+func TestBuilderSetTileErrorHandler(t *testing.T) {
+	builder := NewBuilder()
+	handler := TileErrorHandler{
+		SkipMissing: false,
+		UseNoData:   true,
+		MaxRetries:  5,
+	}
+
+	builder.SetTileErrorHandler(handler)
+
+	if builder.tileErrorHandler.SkipMissing != false {
+		t.Error("tile error handler not set correctly")
+	}
+}
+
+func TestBuilderSetTileCache(t *testing.T) {
+	builder := NewBuilder()
+	cache := mesh.NewMemoryTileCache(100, 0)
+
+	builder.SetTileCache(cache)
+
+	if builder.tileCache != cache {
+		t.Error("tile cache not set correctly")
+	}
+}
+
+func TestBuilderSetResolution(t *testing.T) {
+	builder := NewBuilder()
+	resolution := 2.0
+
+	builder.SetResolution(resolution)
+
+	if builder.resolution != resolution {
+		t.Errorf("resolution not set correctly, got %f, want %f", builder.resolution, resolution)
+	}
+}
+
+func TestBuilderSetCloseMeshOptions(t *testing.T) {
+	builder := NewBuilder()
+	options := &mesh.CloseMeshOptions{
+		Enabled:       true,
+		Thickness:     10.0,
+		ApplyToBottom: true,
+	}
+
+	builder.SetCloseMeshOptions(options)
+
+	if !builder.closeMesh || builder.closeMeshOptions.Thickness != 10.0 {
+		t.Error("close mesh options not set correctly")
+	}
+}
+
+func TestBuilderGetCloseMeshOptions(t *testing.T) {
+	builder := NewBuilder()
+	options := &mesh.CloseMeshOptions{
+		Enabled:   true,
+		Thickness: 15.0,
+	}
+
+	builder.SetCloseMeshOptions(options)
+
+	retrieved := builder.GetCloseMeshOptions()
+	if retrieved == nil || retrieved.Thickness != 15.0 {
+		t.Error("failed to get close mesh options")
+	}
+}
+
+func TestBuilderSetLogger(t *testing.T) {
+	builder := NewBuilder()
+	logger := &mesh.NoOpLogger{}
+
+	builder.SetLogger(logger)
+
+	if builder.logger != logger {
+		t.Error("logger not set correctly")
+	}
+}
+
+func TestBuilderSetProgressCallback(t *testing.T) {
+	builder := NewBuilder()
+	var callback ProgressCallback = &mockProgressCallback{}
+
+	builder.SetProgressCallback(callback)
+
+	if builder.progressCallback == nil {
+		t.Error("progress callback not set correctly")
+	}
+}
+
+type mockProgressCallback struct{}
+
+func (m *mockProgressCallback) OnStageStart(stage string, totalSteps uint64) {}
+func (m *mockProgressCallback) OnProgress(step, total uint64)                {}
+func (m *mockProgressCallback) OnStageComplete(stage string)                 {}
+func (m *mockProgressCallback) OnProgressError(err error)                    {}

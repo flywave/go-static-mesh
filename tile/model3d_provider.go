@@ -12,12 +12,13 @@ import (
 	"sync"
 	"time"
 
-	"github.com/flywave/gltf"
-	"github.com/flywave/go-geo"
-	"github.com/flywave/go-mst"
 	draw "github.com/flywave/go-static-mesh/draw"
 	vec2d "github.com/flywave/go3d/float64/vec2"
 	vec3d "github.com/flywave/go3d/float64/vec3"
+
+	"github.com/flywave/gltf"
+	"github.com/flywave/go-geo"
+	"github.com/flywave/go-mst"
 )
 
 type StaticModel3DProvider struct {

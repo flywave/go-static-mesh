@@ -197,12 +197,26 @@ func (c *TexturedCloser) CloseUnifiedMesh(mesh *Mesh, baseHeight float64) (*Mesh
 		return nil, nil
 	}
 
+	if c.options == nil {
+		c.options = NewDefaultCloseMeshOptions()
+	}
+
+	safetyMargin := c.options.Thickness * 0.1
+	adjustedBaseHeight := baseHeight - safetyMargin
+
+	for _, v := range vertices {
+		if v[2] < adjustedBaseHeight+safetyMargin {
+			penetration := adjustedBaseHeight + safetyMargin - v[2]
+			adjustedBaseHeight -= penetration + safetyMargin
+		}
+	}
+
 	bottomVertices := make([]vec3d.T, len(vertices))
 	for i := 0; i < len(vertices); i++ {
 		bottomVertices[i] = vec3d.T{
 			vertices[i][0],
 			vertices[i][1],
-			baseHeight,
+			adjustedBaseHeight,
 		}
 	}
 

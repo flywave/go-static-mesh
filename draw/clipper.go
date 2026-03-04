@@ -114,10 +114,11 @@ func (c *Clipper) geosToArea(geom *geos.Geometry, original *Area) *Area {
 	var shellCoords []geos.Coord
 
 	if geomType == geos.POLYGON {
-		if geom.GetNumGeometries() > 0 {
-			ring := geom.GetGeometryN(0)
-			if ring != nil {
-				shellCoords = ring.GetCoords()
+		ring := geom.GetExteriorRing()
+		if ring != nil {
+			coords := ring.GetCoords()
+			if coords != nil {
+				shellCoords = coords
 			}
 		}
 	} else {
@@ -125,10 +126,11 @@ func (c *Clipper) geosToArea(geom *geos.Geometry, original *Area) *Area {
 		for i := 0; i < numGeometries; i++ {
 			subGeom := geom.GetGeometryN(i)
 			if subGeom != nil && subGeom.GetType() == geos.POLYGON {
-				if subGeom.GetNumGeometries() > 0 {
-					ring := subGeom.GetGeometryN(0)
-					if ring != nil && len(shellCoords) == 0 {
-						shellCoords = ring.GetCoords()
+				ring := subGeom.GetExteriorRing()
+				if ring != nil && len(shellCoords) == 0 {
+					coords := ring.GetCoords()
+					if coords != nil {
+						shellCoords = coords
 					}
 				}
 				break

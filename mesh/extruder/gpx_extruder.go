@@ -164,32 +164,39 @@ func (e *GPXPathExtruder) sampleTerrainHeight(pos vec2d.T, terrainMesh *mesh.Mes
 		return 0
 	}
 
+	bounds := e.calculateTerrainBounds(terrainMesh)
+	terrainResolution := e.estimateTerrainResolution(terrainMesh, bounds)
+
+	dynamicRadius := math.Max(radius, terrainResolution*5)
+
 	sampleCount := 0
 	totalHeight := 0.0
 
-	for i := 0; i < len(terrainMesh.Vertices); i += 10 {
+	sampleStep := int(math.Max(1, float64(len(terrainMesh.Vertices))/1000.0))
+
+	for i := 0; i < len(terrainMesh.Vertices); i += sampleStep {
 		v := terrainMesh.Vertices[i]
 		dist := math.Sqrt(
 			math.Pow(v[0]-pos[0], 2) +
 				math.Pow(v[1]-pos[1], 2),
 		)
 
-		if dist <= radius {
+		if dist <= dynamicRadius {
 			totalHeight += v[2]
 			sampleCount++
 		}
 	}
 
 	if sampleCount == 0 {
-		radius *= 2.0
-		for i := 0; i < len(terrainMesh.Vertices); i += 5 {
+		dynamicRadius *= 2.0
+		for i := 0; i < len(terrainMesh.Vertices); i += int(math.Max(1, float64(sampleStep)/2)) {
 			v := terrainMesh.Vertices[i]
 			dist := math.Sqrt(
 				math.Pow(v[0]-pos[0], 2) +
 					math.Pow(v[1]-pos[1], 2),
 			)
 
-			if dist <= radius {
+			if dist <= dynamicRadius {
 				totalHeight += v[2]
 				sampleCount++
 			}
@@ -200,7 +207,7 @@ func (e *GPXPathExtruder) sampleTerrainHeight(pos vec2d.T, terrainMesh *mesh.Mes
 		radius = math.Inf(1)
 		minDist := math.Inf(1)
 		minHeight := 0.0
-		for i := 0; i < len(terrainMesh.Vertices); i++ {
+		for i := 0; i < len(terrainMesh.Vertices); i += sampleStep {
 			v := terrainMesh.Vertices[i]
 			dist := math.Sqrt(
 				math.Pow(v[0]-pos[0], 2) +
@@ -216,6 +223,50 @@ func (e *GPXPathExtruder) sampleTerrainHeight(pos vec2d.T, terrainMesh *mesh.Mes
 	}
 
 	return totalHeight / float64(sampleCount)
+}
+
+func (e *GPXPathExtruder) calculateTerrainBounds(terrainMesh *mesh.Mesh) vec2d.Rect {
+	if len(terrainMesh.Vertices) == 0 {
+		return vec2d.Rect{}
+	}
+
+	minX, minY := terrainMesh.Vertices[0][0], terrainMesh.Vertices[0][1]
+	maxX, maxY := terrainMesh.Vertices[0][0], terrainMesh.Vertices[0][1]
+
+	for _, v := range terrainMesh.Vertices {
+		if v[0] < minX {
+			minX = v[0]
+		}
+		if v[0] > maxX {
+			maxX = v[0]
+		}
+		if v[1] < minY {
+			minY = v[1]
+		}
+		if v[1] > maxY {
+			maxY = v[1]
+		}
+	}
+
+	return vec2d.Rect{
+		Min: vec2d.T{minX, minY},
+		Max: vec2d.T{maxX, maxY},
+	}
+}
+
+func (e *GPXPathExtruder) estimateTerrainResolution(terrainMesh *mesh.Mesh, bounds vec2d.Rect) float64 {
+	if len(terrainMesh.Vertices) < 2 {
+		return 1.0
+	}
+
+	boundsW := bounds.Max[0] - bounds.Min[0]
+	boundsH := bounds.Max[1] - bounds.Min[1]
+
+	avgGridSize := math.Sqrt(float64(len(terrainMesh.Vertices)))
+
+	resolution := math.Max(boundsW, boundsH) / avgGridSize
+
+	return math.Max(resolution, 1.0)
 }
 
 func (e *GPXPathExtruder) GetResult() *mesh.Mesh {

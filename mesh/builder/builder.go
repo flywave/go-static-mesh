@@ -124,6 +124,14 @@ func (b *Builder) SetExtrudeGeoData(extrude bool, height float64) {
 }
 
 func (b *Builder) SetCloseMesh(close bool, thickness float64) {
+	const minThickness = 2.0
+
+	if close && thickness < minThickness {
+		b.logger.Warn("Thickness too small, adjusting to minimum",
+			"requested", thickness, "minimum", minThickness)
+		thickness = minThickness
+	}
+
 	b.closeMesh = close
 	b.baseThickness = thickness
 	if b.closeMeshOptions == nil {
