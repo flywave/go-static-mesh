@@ -405,6 +405,21 @@ func (b *Builder) build(isPrint bool) (*mesh.Mesh, error) {
 	b.logger.Debug("Normals calculated", "normals", len(resultMesh.Normals))
 
 	b.reportProgress(3, 4)
+
+	billboardsMesh, err := b.processBillboards(resultMesh)
+	if err != nil {
+		b.logger.Error("Failed to process billboards", "error", err)
+		return nil, &mesh.BuildError{
+			Stage: "generation",
+			Step:  "billboards",
+			Err:   err,
+		}
+	}
+
+	if billboardsMesh != nil && len(billboardsMesh.Vertices) > 0 {
+		b.logger.Info("Billboards processed successfully", "vertices", len(billboardsMesh.Vertices))
+	}
+
 	err = b.addGeoDataToMesh(resultMesh, tinMesh, isPrint)
 	if err != nil {
 		b.logger.Error("Failed to add geo data to mesh", "error", err)

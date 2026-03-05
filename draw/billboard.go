@@ -5,6 +5,7 @@ import (
 	"image"
 	"image/color"
 	"math"
+	"os"
 	"strconv"
 	"strings"
 
@@ -25,19 +26,22 @@ const (
 
 type Billboard struct {
 	MapObject
-	Position   vec2d.T
-	Srs        geo.Proj
-	Text       string
-	Width      float64
-	Height     float64
-	Thickness  float64
-	Rotation   float64
-	TextDepth  float64
-	FontSize   float64
-	Mode       BillboardMode
-	FontParser FontParser
-	Color      color.Color
-	Background color.Color
+	Position     vec2d.T
+	Srs          geo.Proj
+	Text         string
+	Width        float64
+	Height       float64
+	Thickness    float64
+	Rotation     float64
+	TextDepth    float64
+	FontSize     float64
+	Mode         BillboardMode
+	FontParser   FontParser
+	Color        color.Color
+	Background   color.Color
+	FontPath     string
+	TextureDPI   int
+	TextureScale float64
 }
 
 func NewBillboard(pos vec2d.T, srs geo.Proj, text string) *Billboard {
@@ -46,19 +50,22 @@ func NewBillboard(pos vec2d.T, srs geo.Proj, text string) *Billboard {
 
 func NewBillboardWithSize(pos vec2d.T, srs geo.Proj, text string, width, height, thickness float64) *Billboard {
 	b := &Billboard{
-		Position:   pos,
-		Srs:        srs,
-		Text:       text,
-		Width:      width,
-		Height:     height,
-		Thickness:  thickness,
-		Rotation:   0,
-		TextDepth:  0.3,
-		FontSize:   height * 0.6,
-		Mode:       BillboardModeDisplay,
-		FontParser: nil,
-		Color:      color.RGBA{0x00, 0x00, 0x00, 0xff},
-		Background: color.RGBA{0xff, 0xff, 0xff, 0xff},
+		Position:     pos,
+		Srs:          srs,
+		Text:         text,
+		Width:        width,
+		Height:       height,
+		Thickness:    thickness,
+		Rotation:     0,
+		TextDepth:    0.3,
+		FontSize:     height * 0.6,
+		Mode:         BillboardModeDisplay,
+		FontParser:   nil,
+		Color:        color.RGBA{0x00, 0x00, 0x00, 0xff},
+		Background:   color.RGBA{0xff, 0xff, 0xff, 0xff},
+		FontPath:     "",
+		TextureDPI:   300,
+		TextureScale: 1.0,
 	}
 	return b
 }
@@ -179,6 +186,18 @@ func (b *Billboard) SetBackground(col color.Color) {
 	b.Background = col
 }
 
+func (b *Billboard) SetFontPath(path string) {
+	b.FontPath = path
+}
+
+func (b *Billboard) SetTextureDPI(dpi int) {
+	b.TextureDPI = dpi
+}
+
+func (b *Billboard) SetTextureScale(scale float64) {
+	b.TextureScale = scale
+}
+
 func (b *Billboard) ExtraMarginPixels() (float64, float64, float64, float64) {
 	margin := math.Max(b.Width, b.Height) / 2.0
 	return margin, margin, margin, margin
@@ -208,8 +227,18 @@ func (b *Billboard) GetRotatedCorners() [4]vec2d.T {
 		{-halfW, halfH},
 	}
 
+	rad := b.Rotation * math.Pi / 180.0
+	cosR := math.Cos(rad)
+	sinR := math.Sin(rad)
+
 	for i := range corners {
-		corners[i] = vec2d.T{b.Position[0] + corners[i][0], b.Position[1] + corners[i][1]}
+		x := corners[i][0]
+		y := corners[i][1]
+		corners[i][0] = x*cosR - y*sinR
+		corners[i][1] = x*sinR + y*cosR
+
+		corners[i][0] += b.Position[0]
+		corners[i][1] += b.Position[1]
 	}
 
 	return corners
@@ -379,4 +408,144 @@ func (b *Billboard) DrawToTexture(dc *gg.Context, trans *Transformer) image.Imag
 	dc.Clear()
 	b.Draw(dc, trans)
 	return dc.Image()
+}
+
+func (b *Billboard) CreateDisplayTexture() (image.Image, error) {
+	if b.Text == "" {
+		return nil, fmt.Errorf("text is empty")
+	}
+
+	dpi := b.TextureDPI
+	if dpi <= 0 {
+		dpi = 300
+	}
+
+	scale := b.TextureScale
+	if scale <= 0 {
+		scale = 1.0
+	}
+
+	textureWidth := int(float64(512) * scale)
+	textureHeight := int(float64(256) * scale)
+
+	if b.Width > 0 && b.Height > 0 {
+		aspectRatio := b.Width / b.Height
+		if aspectRatio > 2.0 {
+			textureWidth = int(float64(1024) * scale)
+			textureHeight = int(float64(512) * scale)
+		} else if aspectRatio < 0.5 {
+			textureWidth = int(float64(256) * scale)
+			textureHeight = int(float64(512) * scale)
+		}
+	}
+
+	textureWidth = clampInt(textureWidth, 64, 4096)
+	textureHeight = clampInt(textureHeight, 64, 4096)
+
+	if textureWidth <= 0 || textureHeight <= 0 {
+		return nil, fmt.Errorf("invalid texture dimensions: %dx%d", textureWidth, textureHeight)
+	}
+
+	dc := gg.NewContext(textureWidth, textureHeight)
+
+	dc.SetColor(b.Background)
+	dc.Clear()
+
+	fontSize := float64(textureHeight) * 0.5
+
+	var fontPath string
+	if b.FontPath != "" {
+		fontPath = b.FontPath
+	} else {
+		fontPath = findSystemFont()
+		if fontPath == "" {
+			return nil, fmt.Errorf("no default font available, please specify FontPath")
+		}
+	}
+
+	if err := dc.LoadFontFace(fontPath, fontSize); err != nil {
+		return nil, fmt.Errorf("failed to load font: %w", err)
+	}
+
+	dc.SetColor(b.Color)
+
+	textWidth, textHeight := dc.MeasureString(b.Text)
+
+	centerX := float64(textureWidth) / 2.0
+	centerY := float64(textureHeight) / 2.0
+
+	scaleX := float64(textureWidth) * 0.9 / textWidth
+	scaleY := float64(textureHeight) * 0.9 / textHeight
+	scaleFactor := math.Min(scaleX, scaleY)
+
+	if scaleFactor < 1.0 {
+		fontSize = fontSize * scaleFactor
+		if err := dc.LoadFontFace(fontPath, fontSize); err != nil {
+			return nil, fmt.Errorf("failed to load font with scaled size: %w", err)
+		}
+	}
+
+	dc.DrawStringAnchored(b.Text, centerX, centerY, 0.5, 0.5)
+
+	return dc.Image(), nil
+}
+
+func (b *Billboard) calculateTextureFontSizeInPoints() float64 {
+	fontSizeInMeters := b.FontSize
+	if fontSizeInMeters <= 0 {
+		fontSizeInMeters = b.Height * 0.6
+	}
+
+	inch := 0.0254
+	fontSizeInPoints := (fontSizeInMeters / inch) * 72.0
+
+	return fontSizeInPoints
+}
+
+func findSystemFont() string {
+	fonts := []string{
+		"fonts/DejaVuSans.ttf",
+		"../fonts/DejaVuSans.ttf",
+		"../../fonts/DejaVuSans.ttf",
+		"/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf",
+		"/usr/share/fonts/truetype/liberation/LiberationSans-Regular.ttf",
+		"/usr/share/fonts/TTF/DejaVuSans.ttf",
+		"C:\\Windows\\Fonts\\arial.ttf",
+		"/System/Library/Fonts/Helvetica.ttc",
+	}
+
+	for _, font := range fonts {
+		if _, err := os.Stat(font); err == nil {
+			return font
+		}
+	}
+
+	return ""
+}
+
+func clampInt(value, min, max int) int {
+	if value < min {
+		return min
+	}
+	if value > max {
+		return max
+	}
+	return value
+}
+
+func (b *Billboard) calculateTextureFontSize() float64 {
+	dpi := b.TextureDPI
+	if dpi <= 0 {
+		dpi = 300
+	}
+
+	inch := 0.0254
+	fontSizeInMeters := b.FontSize
+	if fontSizeInMeters <= 0 {
+		fontSizeInMeters = b.Height * 0.6
+	}
+
+	fontSizeInPixels := (fontSizeInMeters / inch) * float64(dpi)
+
+	return fontSizeInPixels
 }

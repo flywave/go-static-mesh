@@ -20,6 +20,8 @@ require (
 	github.com/flywave/go-tesselator v0.0.0-20250908022608-9af2b7bde38f
 	github.com/flywave/go-tin v0.0.0-20250611104340-f25bca1483ad
 	github.com/flywave/go3d v0.0.0-20250816053852-aed5d825659f
+	github.com/golang/freetype v0.0.0-20170609003504-e2365dfdc4a0
+	golang.org/x/image v0.28.0
 )
 
 require (
@@ -28,12 +30,10 @@ require (
 	github.com/flywave/imaging v1.6.5 // indirect
 	github.com/flywave/webp v1.1.2 // indirect
 	github.com/go-test/deep v1.0.7 // indirect
-	github.com/golang/freetype v0.0.0-20170609003504-e2365dfdc4a0 // indirect
 	github.com/google/tiff v0.0.0-20161109161721-4b31f3041d9a // indirect
 	github.com/google/uuid v1.5.0 // indirect
 	github.com/hhrutter/lzw v0.0.0-20190829144645-6f07a24e8650 // indirect
 	github.com/pborman/uuid v1.2.1 // indirect
-	golang.org/x/image v0.28.0 // indirect
 	golang.org/x/net v0.40.0 // indirect
 	golang.org/x/text v0.26.0 // indirect
 )

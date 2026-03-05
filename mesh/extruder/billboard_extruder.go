@@ -51,7 +51,13 @@ func (e *BillboardExtruder) ExtrudeBillboardToTerrain(billboard *draw.Billboard,
 
 	signMesh := e.createBillboardBox(billboard, options)
 
-	if billboard.Mode == draw.BillboardModePrint && billboard.FontParser != nil && billboard.Text != "" {
+	if billboard.Mode == draw.BillboardModeDisplay {
+		texture, err := billboard.CreateDisplayTexture()
+		if err == nil && texture != nil {
+			signMesh.Texture = texture
+			e.generateBillboardUVs(signMesh)
+		}
+	} else if billboard.Mode == draw.BillboardModePrint && billboard.FontParser != nil && billboard.Text != "" {
 		textMesh, err := e.createRaisedText(billboard)
 		if err != nil {
 			return fmt.Errorf("failed to create raised text: %w", err)
@@ -138,6 +144,45 @@ func (e *BillboardExtruder) createBillboardBox(billboard *draw.Billboard, option
 	)
 
 	return resultMesh
+}
+
+func (e *BillboardExtruder) generateBillboardUVs(m *mesh.Mesh) {
+	if len(m.Vertices) == 0 {
+		return
+	}
+
+	minX := math.Inf(1)
+	maxX := math.Inf(-1)
+	minY := math.Inf(1)
+	maxY := math.Inf(-1)
+
+	for _, v := range m.Vertices {
+		if v[0] < minX {
+			minX = v[0]
+		}
+		if v[0] > maxX {
+			maxX = v[0]
+		}
+		if v[1] < minY {
+			minY = v[1]
+		}
+		if v[1] > maxY {
+			maxY = v[1]
+		}
+	}
+
+	width := maxX - minX
+	height := maxY - minY
+	if width == 0 || height == 0 {
+		return
+	}
+
+	m.UVs = make([]vec2d.T, len(m.Vertices))
+	for i, v := range m.Vertices {
+		u := (v[0] - minX) / width
+		vCoord := (v[1] - minY) / height
+		m.UVs[i] = vec2d.T{u, vCoord}
+	}
 }
 
 func (e *BillboardExtruder) sampleMinTerrainHeight(corners [4]vec2d.T, terrainMesh *mesh.Mesh, radius float64) float64 {
