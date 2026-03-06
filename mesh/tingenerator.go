@@ -97,10 +97,6 @@ func (g *Tingenerator) SetTriangleLimit(limit int) {
 }
 
 func (g *Tingenerator) GenerateFromRaster(grid interface{}) (interface{}, error) {
-	if grid == nil {
-		return nil, fmt.Errorf("grid is nil")
-	}
-
 	type gridWithElevation interface {
 		GetWidth() int
 		GetHeight() int
@@ -109,12 +105,11 @@ func (g *Tingenerator) GenerateFromRaster(grid interface{}) (interface{}, error)
 		GetMinY() float64
 		GetCellSize() float64
 		GetNoData() float64
-		GetBounds() vec2d.Rect
 	}
 
 	eg, ok := grid.(gridWithElevation)
 	if !ok {
-		return nil, fmt.Errorf("invalid grid type")
+		return nil, fmt.Errorf("grid does not implement gridWithElevation")
 	}
 
 	width := eg.GetWidth()
@@ -128,6 +123,8 @@ func (g *Tingenerator) GenerateFromRaster(grid interface{}) (interface{}, error)
 
 	r := tin.NewRasterDoubleWithData(height, width, data)
 	r.NoData = noData
+
+	r.SetXYPos(eg.GetMinX(), eg.GetMinY(), eg.GetCellSize())
 
 	config := &tin.GeoConfig{
 		SrcProj: g.srcProj,
@@ -192,20 +189,34 @@ func (g *Tingenerator) convertTinMesh(zmesh *tin.ZemlyaMesh, tmesh *tin.Mesh, gr
 		return nil, nil
 	}
 
-	type gridWithBounds interface {
+	type gridWithFullInfo interface {
 		GetBounds() vec2d.Rect
+		GetMinX() float64
+		GetMinY() float64
+		GetCellSize() float64
 	}
 
-	eg, ok := grid.(gridWithBounds)
+	eg, ok := grid.(gridWithFullInfo)
 	if !ok {
 		return nil, nil
 	}
 
 	bounds := eg.GetBounds()
 
+	centerLon := (bounds.Min[0] + bounds.Max[0]) / 2.0
+	centerLat := (bounds.Min[1] + bounds.Max[1]) / 2.0
+
+	scale := 111319.5
+
 	vertices := make([]vec3d.T, len(tmesh.Vertices))
+
 	for i, v := range tmesh.Vertices {
-		vertices[i] = vec3d.T{v[0], v[1], v[2]}
+		geoX := v[0]
+		geoY := v[1]
+
+		localX := (geoX - centerLon) * scale
+		localY := (geoY - centerLat) * scale
+		vertices[i] = vec3d.T{localX, localY, v[2]}
 	}
 
 	indices := make([]uint32, len(tmesh.Faces)*3)
