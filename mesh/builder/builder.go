@@ -434,6 +434,16 @@ func (b *Builder) build(isPrint bool) (*mesh.Mesh, error) {
 	b.logger.Info("Geo data added successfully", "objects", len(b.geoData))
 
 	b.reportProgress(4, 4)
+
+	if b.textureMesh != nil && b.textureMesh.Texture != nil {
+		b.logger.Info("Applying texture from texture mesh")
+		resultMesh.Texture = b.textureMesh.Texture
+		if len(resultMesh.UVs) == 0 && len(resultMesh.Vertices) > 0 {
+			resultMesh.CalculateUVs(resultMesh.Bounds)
+			b.logger.Debug("UVs calculated for texture", "uvs", len(resultMesh.UVs))
+		}
+	}
+
 	if b.closeMesh && b.closeMeshOptions != nil && b.closeMeshOptions.Enabled {
 		b.logger.Info("Closing unified mesh for printing", "thickness", b.baseThickness)
 
@@ -473,6 +483,15 @@ func (b *Builder) build(isPrint bool) (*mesh.Mesh, error) {
 			b.logger.Info("Texture generated successfully")
 		} else {
 			b.logger.Warn("Failed to generate texture", "error", err)
+		}
+	}
+
+	if b.textureMesh != nil && b.textureMesh.Texture != nil {
+		b.logger.Info("Applying texture from texture mesh")
+		resultMesh.Texture = b.textureMesh.Texture
+		if len(resultMesh.UVs) == 0 && len(resultMesh.Vertices) > 0 {
+			resultMesh.CalculateUVs(resultMesh.Bounds)
+			b.logger.Debug("UVs calculated for texture", "uvs", len(resultMesh.UVs))
 		}
 	}
 

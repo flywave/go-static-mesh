@@ -241,11 +241,19 @@ func (c *TexturedCloser) CloseUnifiedMesh(mesh *Mesh, baseHeight float64) (*Mesh
 		Indices:  newIndices,
 		Bounds:   mesh.Bounds,
 		Srs:      mesh.Srs,
+		Texture:  mesh.Texture,
 	}
 
-	if c.options.BottomTextureImage != nil || c.options.BottomColor != nil {
+	if len(mesh.UVs) > 0 {
+		result.UVs = make([]vec2d.T, len(newVertices))
+		copy(result.UVs, mesh.UVs)
+		bottomUVs := c.calculateBottomUVs(bottomVertices, mesh.Bounds,
+			c.options.BottomTextureTilingU,
+			c.options.BottomTextureTilingV)
+		copy(result.UVs[len(vertices):], bottomUVs)
+	} else if c.options.BottomTextureImage != nil || c.options.BottomColor != nil {
 		result.Texture = c.options.BottomTextureImage
-		result.UVs = c.calculateBottomUVs(bottomVertices, mesh.Bounds,
+		result.UVs = c.calculateBottomUVs(newVertices, mesh.Bounds,
 			c.options.BottomTextureTilingU,
 			c.options.BottomTextureTilingV)
 		result.Materials = []Material{*NewMaterial()}

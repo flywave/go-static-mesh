@@ -336,7 +336,7 @@ func (p *GeoTIFFRasterProvider) GetElevationGrid() *ElevationGrid {
 	height := shape[1]
 
 	buffer := make([]float64, width*height)
-	err := p.gdalDS.ReadRaster(0, 0, width, height, buffer, width, height, []int{0}, gdal.Float64, 0, 0, 0, gdal.GRA_NearestNeighbour)
+	err := p.gdalDS.ReadRaster(0, 0, width, height, buffer, width, height, []int{1}, gdal.Float64, 0, 0, 0, gdal.GRA_NearestNeighbour)
 	if err != nil {
 		return nil
 	}
@@ -394,7 +394,7 @@ func (p *GeoTIFFRasterProvider) LoadDEM(r io.Reader, mode RasterDemMode) (*TileD
 	height := shape[1]
 
 	buffer := make([]float64, width*height)
-	err = ds.ReadRaster(0, 0, width, height, buffer, width, height, []int{0}, gdal.Float64, 0, 0, 0, gdal.GRA_NearestNeighbour)
+	err = ds.ReadRaster(0, 0, width, height, buffer, width, height, []int{1}, gdal.Float64, 0, 0, 0, gdal.GRA_NearestNeighbour)
 	if err != nil {
 		return nil, fmt.Errorf("failed to read raster data: %w", err)
 	}

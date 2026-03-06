@@ -3,6 +3,9 @@ package writer
 import (
 	"bytes"
 	"encoding/binary"
+	"image"
+	"image/jpeg"
+	"image/png"
 	"io"
 
 	"github.com/flywave/gltf"
@@ -27,8 +30,9 @@ func NewGLTFWriter(binary bool, includeUVs bool) *GLTFWriter {
 
 func NewGltfWriter() *GLTFWriter {
 	return &GLTFWriter{
-		Binary:     true,
-		IncludeUVs: true,
+		Binary:      true,
+		IncludeUVs:  true,
+		EmbedImages: true,
 	}
 }
 
@@ -39,27 +43,78 @@ func (w *GLTFWriter) Write(m *mesh.Mesh, path string) error {
 	normalFloats := w.convertNormalsToFloat32(m.Normals)
 	indexBytes := w.convertIndicesToBytes(m.Indices)
 
-	var buffers []*gltf.Buffer
 	var bufferViews []*gltf.BufferView
 	var accessors []*gltf.Accessor
 
-	positionBuf := &gltf.Buffer{
-		Data:       w.makeFloat32Buffer(positionFloats),
-		ByteLength: uint32(len(positionFloats) * 4),
-	}
-	buffers = append(buffers, positionBuf)
+	var allBufferData []byte
+	var currentOffset uint32
 
-	normalBuf := &gltf.Buffer{
-		Data:       w.makeFloat32Buffer(normalFloats),
-		ByteLength: uint32(len(normalFloats) * 4),
-	}
-	buffers = append(buffers, normalBuf)
+	positionData := w.makeFloat32Buffer(positionFloats)
+	normalData := w.makeFloat32Buffer(normalFloats)
 
-	indexBuf := &gltf.Buffer{
-		Data:       indexBytes,
+	positionView := &gltf.BufferView{
+		Buffer:     0,
+		ByteOffset: currentOffset,
+		ByteLength: uint32(len(positionData)),
+		Target:     gltf.TargetArrayBuffer,
+	}
+	bufferViews = append(bufferViews, positionView)
+	allBufferData = append(allBufferData, positionData...)
+	currentOffset += uint32(len(positionData))
+
+	normalView := &gltf.BufferView{
+		Buffer:     0,
+		ByteOffset: currentOffset,
+		ByteLength: uint32(len(normalData)),
+		Target:     gltf.TargetArrayBuffer,
+	}
+	bufferViews = append(bufferViews, normalView)
+	allBufferData = append(allBufferData, normalData...)
+	currentOffset += uint32(len(normalData))
+
+	indexView := &gltf.BufferView{
+		Buffer:     0,
+		ByteOffset: currentOffset,
 		ByteLength: uint32(len(indexBytes)),
+		Target:     gltf.TargetElementArrayBuffer,
 	}
-	buffers = append(buffers, indexBuf)
+	bufferViews = append(bufferViews, indexView)
+	allBufferData = append(allBufferData, indexBytes...)
+	currentOffset += uint32(len(indexBytes))
+
+	uvAccessorIndex := uint32(3)
+	var uvData []byte
+	if w.IncludeUVs && len(m.UVs) > 0 {
+		uvFloats := w.convertUVsToFloat32(m.UVs)
+		uvData = w.makeFloat32Buffer(uvFloats)
+
+		uvView := &gltf.BufferView{
+			Buffer:     0,
+			ByteOffset: currentOffset,
+			ByteLength: uint32(len(uvData)),
+			Target:     gltf.TargetArrayBuffer,
+		}
+		bufferViews = append(bufferViews, uvView)
+		allBufferData = append(allBufferData, uvData...)
+		currentOffset += uint32(len(uvData))
+	}
+
+	textureBufferViewIdx := uint32(len(bufferViews))
+	var textureData []byte
+	if m.Texture != nil && w.EmbedImages {
+		var err error
+		textureData, _, err = w.encodeTexture(m.Texture)
+		if err == nil && len(textureData) > 0 {
+			textureView := &gltf.BufferView{
+				Buffer:     0,
+				ByteOffset: currentOffset,
+				ByteLength: uint32(len(textureData)),
+			}
+			bufferViews = append(bufferViews, textureView)
+			allBufferData = append(allBufferData, textureData...)
+			currentOffset += uint32(len(textureData))
+		}
+	}
 
 	attributes := map[string]uint32{
 		"POSITION": 0,
@@ -92,17 +147,8 @@ func (w *GLTFWriter) Write(m *mesh.Mesh, path string) error {
 		Count:         uint32(len(m.Indices)),
 	})
 
-	uvAccessorIndex := uint32(3)
 	if w.IncludeUVs && len(m.UVs) > 0 {
-		uvFloats := w.convertUVsToFloat32(m.UVs)
-		uvBuf := &gltf.Buffer{
-			Data:       w.makeFloat32Buffer(uvFloats),
-			ByteLength: uint32(len(uvFloats)) * 4,
-		}
-		buffers = append(buffers, uvBuf)
-
 		attributes["TEXCOORD_0"] = uvAccessorIndex
-
 		accessors = append(accessors, &gltf.Accessor{
 			BufferView:    gltf.Index(uvAccessorIndex),
 			ByteOffset:    0,
@@ -112,48 +158,42 @@ func (w *GLTFWriter) Write(m *mesh.Mesh, path string) error {
 		})
 	}
 
-	positionView := &gltf.BufferView{
-		Buffer:     uint32(0),
-		ByteOffset: 0,
-		ByteLength: positionBuf.ByteLength,
-		Target:     gltf.TargetArrayBuffer,
+	primitive := &gltf.Primitive{
+		Indices:    gltf.Index(2),
+		Attributes: attributes,
+		Mode:       gltf.PrimitiveTriangles,
 	}
-	bufferViews = append(bufferViews, positionView)
 
-	normalView := &gltf.BufferView{
-		Buffer:     uint32(1),
-		ByteOffset: 0,
-		ByteLength: normalBuf.ByteLength,
-		Target:     gltf.TargetArrayBuffer,
-	}
-	bufferViews = append(bufferViews, normalView)
+	if m.Texture != nil && w.EmbedImages && len(textureData) > 0 {
+		textureIdx := uint32(len(doc.Textures))
+		imageIdx := uint32(len(doc.Images))
 
-	indexView := &gltf.BufferView{
-		Buffer:     uint32(2),
-		ByteOffset: 0,
-		ByteLength: indexBuf.ByteLength,
-		Target:     gltf.TargetElementArrayBuffer,
-	}
-	bufferViews = append(bufferViews, indexView)
+		doc.Images = append(doc.Images, &gltf.Image{
+			BufferView: gltf.Index(textureBufferViewIdx),
+			MimeType:   "image/png",
+		})
 
-	if w.IncludeUVs && len(m.UVs) > 0 {
-		uvView := &gltf.BufferView{
-			Buffer:     uvAccessorIndex,
-			ByteOffset: 0,
-			ByteLength: buffers[uvAccessorIndex].ByteLength,
-			Target:     gltf.TargetArrayBuffer,
-		}
-		bufferViews = append(bufferViews, uvView)
+		doc.Textures = append(doc.Textures, &gltf.Texture{
+			Source: gltf.Index(imageIdx),
+		})
+
+		materialIdx := uint32(0)
+		doc.Materials = append(doc.Materials, &gltf.Material{
+			Name: "textured_material",
+			PBRMetallicRoughness: &gltf.PBRMetallicRoughness{
+				BaseColorTexture: &gltf.TextureInfo{
+					Index: textureIdx,
+				},
+				MetallicFactor:  gltf.Float(0.0),
+				RoughnessFactor: gltf.Float(0.5),
+			},
+		})
+
+		primitive.Material = gltf.Index(materialIdx)
 	}
 
 	doc.Meshes = []*gltf.Mesh{{
-		Primitives: []*gltf.Primitive{
-			{
-				Indices:    gltf.Index(2),
-				Attributes: attributes,
-				Mode:       gltf.PrimitiveTriangles,
-			},
-		},
+		Primitives: []*gltf.Primitive{primitive},
 	}}
 
 	doc.Nodes = []*gltf.Node{
@@ -165,17 +205,17 @@ func (w *GLTFWriter) Write(m *mesh.Mesh, path string) error {
 
 	doc.Scenes[0].Nodes = []uint32{0}
 
-	if w.Binary {
-		doc.Buffers = []*gltf.Buffer{{Data: w.combineBinaryData(buffers), ByteLength: 0, URI: ""}}
-		doc.BufferViews = bufferViews
-		doc.Accessors = accessors
-
-		return gltf.SaveBinary(doc, path)
-	}
-
-	doc.Buffers = buffers
+	doc.Buffers = []*gltf.Buffer{{
+		Data:       allBufferData,
+		ByteLength: uint32(len(allBufferData)),
+		URI:        "",
+	}}
 	doc.BufferViews = bufferViews
 	doc.Accessors = accessors
+
+	if w.Binary {
+		return gltf.SaveBinary(doc, path)
+	}
 
 	return gltf.Save(doc, path)
 }
@@ -249,22 +289,6 @@ func (w *GLTFWriter) makeFloat32Buffer(data []float32) []byte {
 	return buf.Bytes()
 }
 
-func (w *GLTFWriter) combineBinaryData(buffers []*gltf.Buffer) []byte {
-	var totalSize uint32
-	for _, buf := range buffers {
-		totalSize += buf.ByteLength
-	}
-
-	result := make([]byte, totalSize)
-	offset := 0
-	for _, buf := range buffers {
-		copy(result[offset:], buf.Data)
-		offset += int(buf.ByteLength)
-	}
-
-	return result
-}
-
 func (w *GLTFWriter) findMax(data []float32) []float32 {
 	if len(data) == 0 {
 		return []float32{0, 0, 0}
@@ -305,4 +329,23 @@ func (w *GLTFWriter) findMin(data []float32) []float32 {
 		}
 	}
 	return []float32{minX, minY, minZ}
+}
+
+func (w *GLTFWriter) encodeTexture(img image.Image) ([]byte, string, error) {
+	var buf bytes.Buffer
+	var mimeType string
+
+	if w.EmbedImages {
+		if err := png.Encode(&buf, img); err != nil {
+			return nil, "", err
+		}
+		mimeType = "image/png"
+	} else {
+		if err := jpeg.Encode(&buf, img, &jpeg.Options{Quality: 90}); err != nil {
+			return nil, "", err
+		}
+		mimeType = "image/jpeg"
+	}
+
+	return buf.Bytes(), mimeType, nil
 }
