@@ -53,23 +53,42 @@ func (w *STLWriter) WriteTo(m *mesh.Mesh, writer io.Writer) error {
 		IsAscii: w.ASCII,
 	}
 
-	triangles := make([]stl.Triangle, len(m.Indices)/3)
+	count := 0
+	for i := 0; i < len(m.Indices); i += 3 {
+		if i+2 >= len(m.Indices) {
+			break
+		}
+		i0, i1, i2 := m.Indices[i], m.Indices[i+1], m.Indices[i+2]
+		if i0 >= uint32(len(m.Vertices)) || i1 >= uint32(len(m.Vertices)) || i2 >= uint32(len(m.Vertices)) {
+			continue
+		}
+		count++
+	}
+
+	triangles := make([]stl.Triangle, 0, count)
 
 	for i := 0; i < len(m.Indices); i += 3 {
-		v0 := m.Vertices[m.Indices[i]]
-		v1 := m.Vertices[m.Indices[i+1]]
-		v2 := m.Vertices[m.Indices[i+2]]
+		if i+2 >= len(m.Indices) {
+			break
+		}
+		i0, i1, i2 := m.Indices[i], m.Indices[i+1], m.Indices[i+2]
+		if i0 >= uint32(len(m.Vertices)) || i1 >= uint32(len(m.Vertices)) || i2 >= uint32(len(m.Vertices)) {
+			continue
+		}
+		v0 := m.Vertices[i0]
+		v1 := m.Vertices[i1]
+		v2 := m.Vertices[i2]
 
 		normal := w.calculateNormal(v0, v1, v2)
 
-		triangles[i/3] = stl.Triangle{
+		triangles = append(triangles, stl.Triangle{
 			Normal: normal,
 			Vertices: [3]vec3.T{
 				{float32(v0[0]), float32(v0[1]), float32(v0[2])},
 				{float32(v1[0]), float32(v1[1]), float32(v1[2])},
 				{float32(v2[0]), float32(v2[1]), float32(v2[2])},
 			},
-		}
+		})
 	}
 
 	solid.Triangles = triangles

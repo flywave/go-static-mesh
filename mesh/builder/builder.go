@@ -308,8 +308,6 @@ func (b *Builder) build(isPrint bool) (*mesh.Mesh, error) {
 
 	b.logger.Debug("Bounds validated", "min", b.bounds.Min, "max", b.bounds.Max, "source", "resolved")
 
-	b.resolveBounds()
-
 	var tinMesh interface{}
 	var err error
 
@@ -420,7 +418,7 @@ func (b *Builder) build(isPrint bool) (*mesh.Mesh, error) {
 		b.logger.Info("Billboards processed successfully", "vertices", len(billboardsMesh.Vertices))
 	}
 
-	err = b.addGeoDataToMesh(resultMesh, tinMesh, isPrint)
+	err = b.addGeoDataToMesh(resultMesh, tinMesh)
 	if err != nil {
 		b.logger.Error("Failed to add geo data to mesh", "error", err)
 		b.reportProgressError(err)
@@ -435,11 +433,25 @@ func (b *Builder) build(isPrint bool) (*mesh.Mesh, error) {
 
 	b.reportProgress(4, 4)
 
+	if b.imageryProvider != nil {
+		b.logger.Info("Generating texture from imagery provider")
+		textureMesh, err := b.GenerateTexture()
+		if err == nil {
+			resultMesh.Texture = textureMesh.Texture
+			if len(textureMesh.UVs) > 0 {
+				resultMesh.UVs = textureMesh.UVs
+			}
+			b.logger.Info("Texture generated successfully")
+		} else {
+			b.logger.Warn("Failed to generate texture", "error", err)
+		}
+	}
+
 	if b.textureMesh != nil && b.textureMesh.Texture != nil {
 		b.logger.Info("Applying texture from texture mesh")
 		resultMesh.Texture = b.textureMesh.Texture
 		if len(resultMesh.UVs) == 0 && len(resultMesh.Vertices) > 0 {
-			resultMesh.CalculateUVs(resultMesh.Bounds)
+			resultMesh.CalculateUVsFromExtent()
 			b.logger.Debug("UVs calculated for texture", "uvs", len(resultMesh.UVs))
 		}
 	}
@@ -470,29 +482,6 @@ func (b *Builder) build(isPrint bool) (*mesh.Mesh, error) {
 		b.logger.Info("Unified mesh closed successfully")
 		b.reportStageComplete("generation")
 		return closedMesh, nil
-	}
-
-	if b.imageryProvider != nil {
-		b.logger.Info("Generating texture from imagery provider")
-		textureMesh, err := b.GenerateTexture()
-		if err == nil {
-			resultMesh.Texture = textureMesh.Texture
-			if len(textureMesh.UVs) > 0 {
-				resultMesh.UVs = textureMesh.UVs
-			}
-			b.logger.Info("Texture generated successfully")
-		} else {
-			b.logger.Warn("Failed to generate texture", "error", err)
-		}
-	}
-
-	if b.textureMesh != nil && b.textureMesh.Texture != nil {
-		b.logger.Info("Applying texture from texture mesh")
-		resultMesh.Texture = b.textureMesh.Texture
-		if len(resultMesh.UVs) == 0 && len(resultMesh.Vertices) > 0 {
-			resultMesh.CalculateUVs(resultMesh.Bounds)
-			b.logger.Debug("UVs calculated for texture", "uvs", len(resultMesh.UVs))
-		}
 	}
 
 	b.logger.Info("Mesh build completed successfully", "vertices", len(resultMesh.Vertices), "triangles", resultMesh.TriangleCount())

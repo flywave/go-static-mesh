@@ -59,6 +59,37 @@ func (c *SimpleCloser) CloseSurfaceMesh(mesh interface{}, thickness float64) (*M
 		newIndices[idx+2] = indices[i+0] + offset
 	}
 
+	edgeCount := make(map[edgeKey]int)
+	for i := 0; i < len(indices); i += 3 {
+		tri := [...]uint32{indices[i], indices[i+1], indices[i+2]}
+		for j := 0; j < 3; j++ {
+			a, b := tri[j], tri[(j+1)%3]
+			if a > b {
+				a, b = b, a
+			}
+			edgeCount[edgeKey{a, b}]++
+		}
+	}
+
+	for i := 0; i < len(indices); i += 3 {
+		tri := [...]uint32{indices[i], indices[i+1], indices[i+2]}
+		for j := 0; j < 3; j++ {
+			a, b := tri[j], tri[(j+1)%3]
+			ea, eb := a, b
+			if ea > eb {
+				ea, eb = eb, ea
+			}
+			if edgeCount[edgeKey{ea, eb}] != 1 {
+				continue
+			}
+			edgeCount[edgeKey{ea, eb}] = 0
+			newIndices = append(newIndices,
+				a, a+offset, b,
+				a+offset, b+offset, b,
+			)
+		}
+	}
+
 	result := &Mesh{
 		Vertices: newVertices,
 		Indices:  newIndices,

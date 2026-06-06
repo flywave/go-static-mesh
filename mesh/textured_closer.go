@@ -9,6 +9,10 @@ import (
 	vec3d "github.com/flywave/go3d/float64/vec3"
 )
 
+type edgeKey struct {
+	a, b uint32
+}
+
 type CloseMeshOptions struct {
 	Thickness          float64
 	UseMinHeightAsBase bool
@@ -158,6 +162,43 @@ func (c *TexturedCloser) closeMeshWithTexture(mesh interface{}) (*Mesh, error) {
 	return result, nil
 }
 
+func (c *TexturedCloser) buildSideWalls(indices []uint32, offset uint32) []uint32 {
+	edgeCount := make(map[edgeKey]int)
+
+	for i := 0; i < len(indices); i += 3 {
+		tri := [...]uint32{indices[i], indices[i+1], indices[i+2]}
+		for j := 0; j < 3; j++ {
+			a, b := tri[j], tri[(j+1)%3]
+			if a > b {
+				a, b = b, a
+			}
+			edgeCount[edgeKey{a, b}]++
+		}
+	}
+
+	sideIndices := make([]uint32, 0, len(edgeCount)*6)
+	for i := 0; i < len(indices); i += 3 {
+		tri := [...]uint32{indices[i], indices[i+1], indices[i+2]}
+		for j := 0; j < 3; j++ {
+			a, b := tri[j], tri[(j+1)%3]
+			ea, eb := a, b
+			if ea > eb {
+				ea, eb = eb, ea
+			}
+			if edgeCount[edgeKey{ea, eb}] != 1 {
+				continue
+			}
+			edgeCount[edgeKey{ea, eb}] = 0
+			sideIndices = append(sideIndices,
+				a, a+offset, b,
+				a+offset, b+offset, b,
+			)
+		}
+	}
+
+	return sideIndices
+}
+
 func (c *TexturedCloser) calculateBottomUVs(vertices []vec3d.T, bounds vec2d.Rect, tilingU, tilingV float64) []vec2d.T {
 	if len(vertices) == 0 {
 		return nil
@@ -236,6 +277,13 @@ func (c *TexturedCloser) CloseUnifiedMesh(mesh *Mesh, baseHeight float64) (*Mesh
 		newIndices[idx+2] = indices[i+0] + offset
 	}
 
+	sideIndices := c.buildSideWalls(indices, offset)
+	newIndices = append(newIndices, sideIndices...)
+
+	topTriCount := len(indices) / 3
+	bottomTriCount := topTriCount
+	sideTriCount := len(sideIndices) / 3
+
 	result := &Mesh{
 		Vertices: newVertices,
 		Indices:  newIndices,
@@ -243,6 +291,30 @@ func (c *TexturedCloser) CloseUnifiedMesh(mesh *Mesh, baseHeight float64) (*Mesh
 		Srs:      mesh.Srs,
 		Texture:  mesh.Texture,
 	}
+
+	earthColor := color.RGBA{160, 130, 90, 255}
+	if c.options.SideColor != nil {
+		if c, ok := c.options.SideColor.(color.RGBA); ok {
+			earthColor = c
+		}
+	}
+
+	result.Materials = []Material{
+		*NewMaterial(),
+		*NewPBRMaterial("earth", earthColor, 0.6, 0.8),
+	}
+	if mesh.Texture != nil {
+		result.Materials[0].Diffuse = color.RGBA{255, 255, 255, 255}
+	}
+
+	materialIndices := make([]uint32, topTriCount+bottomTriCount+sideTriCount)
+	for i := 0; i < topTriCount; i++ {
+		materialIndices[i] = 0
+	}
+	for i := topTriCount; i < topTriCount+bottomTriCount+sideTriCount; i++ {
+		materialIndices[i] = 1
+	}
+	result.MaterialIndices = materialIndices
 
 	if len(mesh.UVs) > 0 {
 		result.UVs = make([]vec2d.T, len(newVertices))
@@ -256,10 +328,6 @@ func (c *TexturedCloser) CloseUnifiedMesh(mesh *Mesh, baseHeight float64) (*Mesh
 		result.UVs = c.calculateBottomUVs(newVertices, mesh.Bounds,
 			c.options.BottomTextureTilingU,
 			c.options.BottomTextureTilingV)
-		result.Materials = []Material{*NewMaterial()}
-		if c.options.BottomColor != nil {
-			result.Materials[0].Diffuse = c.options.BottomColor
-		}
 	}
 
 	result.CalculateNormals()

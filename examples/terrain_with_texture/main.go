@@ -4,8 +4,11 @@ import (
 	"fmt"
 	"image"
 	"log"
+	"math"
 	"os"
 	"path/filepath"
+	"strconv"
+	"strings"
 
 	"github.com/flywave/go-geo"
 	"github.com/flywave/go-static-mesh/mesh"
@@ -143,29 +146,38 @@ func loadAndMergeDEMFromWebP(files []string) (*tile.ElevationGrid, error) {
 	log.Printf("Merging %d DEM tiles (%dx%d grid)...", len(coords), gridCols, gridRows)
 
 	tiles := make([]*tile.ElevationGrid, len(coords))
+	var tileSize uint32
 	for i, coord := range coords {
 		if data, ok := tileData[coord]; ok {
 			grid := tile.NewElevationGridFromTileData(data, geo.NewProj(4326))
 			if grid != nil {
 				tiles[i] = grid
+				if tileSize == 0 {
+					tileSize = uint32(grid.Width)
+				}
 			}
 		}
 	}
 
-	merger := tile.NewRasterMerger([2]int{gridCols, gridRows}, [2]uint32{256, 256})
+	merger := tile.NewRasterMerger([2]int{gridCols, gridRows}, [2]uint32{tileSize, tileSize})
 	mergedData := merger.Merge(tiles, tile.BORDER_NONE)
 	if mergedData == nil {
 		return nil, fmt.Errorf("failed to merge tiles")
 	}
 
 	// 设置合并后的边界
-	minLon := 360.0 * float64(minX) / float64(gridCols)
-	maxLon := 360.0 * float64(minX+gridCols) / float64(gridCols)
-	minLat := 90.0 - 360.0*float64(minY)/float64(gridRows)
-	maxLat := 90.0 - 360.0*float64(minY)/float64(gridRows)/float64(gridRows)
+	n := float64(int(1) << zoom)
+	minLon := float64(minX)/n*360.0 - 180.0
+	maxLon := float64(maxX+1)/n*360.0 - 180.0
+
+	latNorth := math.Atan(math.Sinh(math.Pi * (1 - 2*float64(minY)/n)))
+	latNorth = latNorth * 180.0 / math.Pi
+	latSouth := math.Atan(math.Sinh(math.Pi * (1 - 2*float64(maxY+1)/n)))
+	latSouth = latSouth * 180.0 / math.Pi
+
 	mergedData.Box = vec2d.Rect{
-		Min: vec2d.T{minLon, minLat},
-		Max: vec2d.T{maxLon, maxLat},
+		Min: vec2d.T{latSouth, minLon},
+		Max: vec2d.T{latNorth, maxLon},
 	}
 	mergedData.Boxsrs = geo.NewProj(4326)
 
@@ -237,8 +249,25 @@ func loadAndMergeDEMFromTIFF(files []string) (*tile.ElevationGrid, error) {
 
 	log.Printf("Merging %d DEM tiles (%dx%d grid)...", len(coords), gridCols, gridRows)
 
-	merger := tile.NewRasterMerger([2]int{gridCols, gridRows}, [2]uint32{256, 256})
-	mergedData := merger.MergeFromProviders(providers, coords, tile.BORDER_NONE)
+	var tileSize uint32
+	tiles := make([]*tile.ElevationGrid, len(coords))
+	for i, coord := range coords {
+		provider, exists := providers[coord]
+		if !exists {
+			continue
+		}
+		grid := provider.GetElevationGrid()
+		if grid == nil {
+			continue
+		}
+		tiles[i] = grid
+		if tileSize == 0 {
+			tileSize = uint32(grid.Width)
+		}
+	}
+
+	merger := tile.NewRasterMerger([2]int{gridCols, gridRows}, [2]uint32{tileSize, tileSize})
+	mergedData := merger.Merge(tiles, tile.BORDER_NONE)
 
 	mergedGrid := tile.NewElevationGridFromTileData(mergedData, geo.NewProj(4326))
 
@@ -248,22 +277,16 @@ func loadAndMergeDEMFromTIFF(files []string) (*tile.ElevationGrid, error) {
 }
 
 func loadAndMergeTexture(textureDir string, demBounds vec2d.Rect) (image.Image, error) {
-	files, err := filepath.Glob(filepath.Join(textureDir, "*.webp"))
-	if err != nil {
-		return nil, err
-	}
-
-	if len(files) == 0 {
-		files, err = filepath.Glob(filepath.Join(textureDir, "*.png"))
+	exts := []string{"*.webp", "*.png", "*.jpg"}
+	var files []string
+	for _, ext := range exts {
+		var err error
+		files, err = filepath.Glob(filepath.Join(textureDir, ext))
 		if err != nil {
 			return nil, err
 		}
-	}
-
-	if len(files) == 0 {
-		files, err = filepath.Glob(filepath.Join(textureDir, "*.jpg"))
-		if err != nil {
-			return nil, err
+		if len(files) > 0 {
+			break
 		}
 	}
 
@@ -273,39 +296,77 @@ func loadAndMergeTexture(textureDir string, demBounds vec2d.Rect) (image.Image, 
 
 	log.Printf("Loading %d texture files...", len(files))
 
-	layers := make([]image.Image, 0)
-	opacities := make([]float64, 0)
-	bounds := make([]vec2d.Rect, 0)
-	srs := make([]geo.Proj, 0)
+	var zoom int
+	minX, maxX := int(^uint(0)>>1), 0
+	minY, maxY := int(^uint(0)>>1), 0
+	tileImages := make(map[[3]int]image.Image)
 
 	for _, file := range files {
+		basename := filepath.Base(file)
+		trimmed := strings.TrimSuffix(basename, filepath.Ext(basename))
+		parts := strings.Split(trimmed, "_")
+		if len(parts) < 3 {
+			log.Printf("skipping file with invalid name: %s", basename)
+			continue
+		}
+		z, _ := strconv.Atoi(parts[len(parts)-3])
+		x, _ := strconv.Atoi(parts[len(parts)-2])
+		y, _ := strconv.Atoi(parts[len(parts)-1])
+
+		if zoom == 0 {
+			zoom = z
+		}
+
+		if x < minX {
+			minX = x
+		}
+		if x > maxX {
+			maxX = x
+		}
+		if y < minY {
+			minY = y
+		}
+		if y > maxY {
+			maxY = y
+		}
+
 		img, err := loadImage(file)
 		if err != nil {
 			log.Printf("Failed to load %s: %v", file, err)
 			continue
 		}
 
-		layers = append(layers, img)
-		opacities = append(opacities, 1.0)
-		bounds = append(bounds, demBounds)
-		srs = append(srs, geo.NewProj(4326))
+		tileImages[[3]int{x, y, z}] = img
 	}
 
-	if len(layers) == 0 {
-		return nil, fmt.Errorf("no valid texture layers")
+	gridCols := maxX - minX + 1
+	gridRows := maxY - minY + 1
+
+	coords := make([][3]int, gridCols*gridRows)
+	idx := 0
+	for y := minY; y <= maxY; y++ {
+		for x := minX; x <= maxX; x++ {
+			coords[idx] = [3]int{x, y, zoom}
+			idx++
+		}
 	}
 
-	merger := tile.NewLayerMerger()
-	for i := range layers {
-		merger.AddLayer(layers[i], opacities[i], bounds[i], srs[i])
+	log.Printf("Merging %d texture tiles (%dx%d grid)...", len(coords), gridCols, gridRows)
+
+	tiles := make([]image.Image, len(coords))
+	for i, coord := range coords {
+		if img, ok := tileImages[coord]; ok {
+			tiles[i] = img
+		}
 	}
 
-	mergedTexture := merger.Merge(
-		[2]uint32{uint32(1024), uint32(1024)},
-		demBounds,
-		geo.NewProj(4326),
-		nil,
-	)
+	imgSize := uint32(256)
+	if len(tiles) > 0 && tiles[0] != nil {
+		imgSize = uint32(tiles[0].Bounds().Dx())
+	}
+
+	merger := tile.NewImageMerger([2]int{gridCols, gridRows}, [2]uint32{imgSize, imgSize})
+	mergedTexture := merger.Merge(tiles, nil)
 
 	log.Printf("Texture merged: size=%dx%d",
 		mergedTexture.Bounds().Dx(), mergedTexture.Bounds().Dy())
@@ -410,8 +471,8 @@ func main() {
 		log.Fatalf("创建输出目录失败: %v", err)
 	}
 
-	outputFile := filepath.Join(outputDir, "terrain_textured.gltf")
-	fmt.Printf("步骤 8: 保存为 GLTF -> %s\n", outputFile)
+	outputFile := filepath.Join(outputDir, "terrain_textured.glb")
+	fmt.Printf("步骤 8: 保存为 GLB -> %s\n", outputFile)
 
 	w := writer.NewGltfWriter()
 	if err := w.Write(terrainMesh, outputFile); err != nil {

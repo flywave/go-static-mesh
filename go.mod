@@ -63,3 +63,5 @@ replace github.com/flywave/flywave-gdal => ../flywave-gdal
 replace github.com/flywave/go-mst => ../go-mst
 
 replace github.com/flywave/go-tesselator => ../go-tesselator
+
+replace github.com/flywave/gltf => ../gltf

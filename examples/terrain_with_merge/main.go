@@ -196,8 +196,8 @@ func main() {
 		log.Fatalf("创建输出目录失败: %v", err)
 	}
 
-	outputFile := filepath.Join(outputDir, "terrain_merged.gltf")
-	fmt.Printf("步骤 10: 保存为 GLTF 格式 -> %s\n", outputFile)
+	outputFile := filepath.Join(outputDir, "terrain_merged.glb")
+	fmt.Printf("步骤 10: 保存为 GLB 格式 -> %s\n", outputFile)
 
 	w := writer.NewGltfWriter()
 	if err := w.Write(terrainMesh, outputFile); err != nil {

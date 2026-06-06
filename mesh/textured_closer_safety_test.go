@@ -228,23 +228,30 @@ func TestTexturedCloser_CloseUnifiedMesh_GeometryValidation(t *testing.T) {
 	topIndexCount := len(mesh.Indices)
 	bottomIndexCount := len(closedMesh.Indices) - topIndexCount
 
-	if bottomIndexCount != topIndexCount {
-		t.Errorf("Bottom index count %d should equal top index count %d",
+	if bottomIndexCount <= topIndexCount {
+		t.Errorf("Expected side wall triangles, bottom index count %d should exceed top index count %d",
 			bottomIndexCount, topIndexCount)
 	}
 
-	for i := 0; i < 3; i++ {
-		topIdx := mesh.Indices[i]
-		bottomIdx := closedMesh.Indices[topIndexCount+i]
-
-		_ = topIdx
-
-		if bottomIdx < uint32(topVertexCount) {
-			t.Errorf("Bottom index %d should be >= %d", bottomIdx, topVertexCount)
+	for i := 0; i < topIndexCount; i++ {
+		if closedMesh.Indices[i] != mesh.Indices[i] {
+			t.Errorf("Top index %d changed from %d to %d", i, mesh.Indices[i], closedMesh.Indices[i])
 		}
+	}
 
-		if bottomIdx >= uint32(len(closedMesh.Vertices)) {
-			t.Errorf("Bottom index %d out of bounds", bottomIdx)
+	for i := topIndexCount; i < topIndexCount*2; i++ {
+		if closedMesh.Indices[i] < uint32(topVertexCount) {
+			t.Errorf("Bottom index %d should reference bottom vertices (>=%d), got %d",
+				i, topVertexCount, closedMesh.Indices[i])
+		}
+		if closedMesh.Indices[i] >= uint32(len(closedMesh.Vertices)) {
+			t.Errorf("Bottom index %d out of bounds", closedMesh.Indices[i])
+		}
+	}
+
+	for i := topIndexCount * 2; i < len(closedMesh.Indices); i++ {
+		if closedMesh.Indices[i] >= uint32(len(closedMesh.Vertices)) {
+			t.Errorf("Side wall index %d out of bounds", closedMesh.Indices[i])
 		}
 	}
 }

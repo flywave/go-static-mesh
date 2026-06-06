@@ -3,10 +3,12 @@ package writer
 import (
 	"bytes"
 	"encoding/binary"
+	"fmt"
 	"image"
 	"image/jpeg"
 	"image/png"
 	"io"
+	"strings"
 
 	"github.com/flywave/gltf"
 	"github.com/flywave/go-static-mesh/mesh"
@@ -38,6 +40,17 @@ func NewGltfWriter() *GLTFWriter {
 
 func (w *GLTFWriter) Write(m *mesh.Mesh, path string) error {
 	doc := gltf.NewDocument()
+
+	if len(m.Vertices) == 0 {
+		return fmt.Errorf("mesh has no vertices")
+	}
+
+	numVertices := uint32(len(m.Vertices))
+	for _, idx := range m.Indices {
+		if idx >= numVertices {
+			return fmt.Errorf("index %d out of bounds: mesh has %d vertices", idx, numVertices)
+		}
+	}
 
 	positionFloats := w.convertVerticesToFloat32(m.Vertices)
 	normalFloats := w.convertNormalsToFloat32(m.Normals)
@@ -72,6 +85,7 @@ func (w *GLTFWriter) Write(m *mesh.Mesh, path string) error {
 	allBufferData = append(allBufferData, normalData...)
 	currentOffset += uint32(len(normalData))
 
+	indexDataOffset := currentOffset
 	indexView := &gltf.BufferView{
 		Buffer:     0,
 		ByteOffset: currentOffset,
@@ -82,7 +96,7 @@ func (w *GLTFWriter) Write(m *mesh.Mesh, path string) error {
 	allBufferData = append(allBufferData, indexBytes...)
 	currentOffset += uint32(len(indexBytes))
 
-	uvAccessorIndex := uint32(3)
+	var uvBufferViewIdx uint32
 	var uvData []byte
 	if w.IncludeUVs && len(m.UVs) > 0 {
 		uvFloats := w.convertUVsToFloat32(m.UVs)
@@ -97,6 +111,7 @@ func (w *GLTFWriter) Write(m *mesh.Mesh, path string) error {
 		bufferViews = append(bufferViews, uvView)
 		allBufferData = append(allBufferData, uvData...)
 		currentOffset += uint32(len(uvData))
+		uvBufferViewIdx = uint32(len(bufferViews) - 1)
 	}
 
 	textureBufferViewIdx := uint32(len(bufferViews))
@@ -139,18 +154,10 @@ func (w *GLTFWriter) Write(m *mesh.Mesh, path string) error {
 		Count:         uint32(len(m.Normals)),
 	})
 
-	accessors = append(accessors, &gltf.Accessor{
-		BufferView:    gltf.Index(2),
-		ByteOffset:    0,
-		ComponentType: gltf.ComponentUint,
-		Type:          gltf.AccessorScalar,
-		Count:         uint32(len(m.Indices)),
-	})
-
 	if w.IncludeUVs && len(m.UVs) > 0 {
-		attributes["TEXCOORD_0"] = uvAccessorIndex
+		attributes["TEXCOORD_0"] = uint32(len(accessors))
 		accessors = append(accessors, &gltf.Accessor{
-			BufferView:    gltf.Index(uvAccessorIndex),
+			BufferView:    gltf.Index(uvBufferViewIdx),
 			ByteOffset:    0,
 			ComponentType: gltf.ComponentFloat,
 			Type:          gltf.AccessorVec2,
@@ -158,43 +165,129 @@ func (w *GLTFWriter) Write(m *mesh.Mesh, path string) error {
 		})
 	}
 
-	primitive := &gltf.Primitive{
-		Indices:    gltf.Index(2),
-		Attributes: attributes,
-		Mode:       gltf.PrimitiveTriangles,
-	}
+	if len(m.MaterialIndices) > 0 {
+		type triRange struct {
+			start    uint32
+			count    uint32
+			matIdx   uint32
+		}
+		ranges := make([]triRange, 0)
+		currentMat := m.MaterialIndices[0]
+		rangeStart := uint32(0)
+		for i := uint32(0); i < uint32(len(m.MaterialIndices)); i++ {
+			if m.MaterialIndices[i] != currentMat {
+				ranges = append(ranges, triRange{rangeStart * 3, (i - rangeStart) * 3, currentMat})
+				currentMat = m.MaterialIndices[i]
+				rangeStart = i
+			}
+		}
+		ranges = append(ranges, triRange{rangeStart * 3, (uint32(len(m.MaterialIndices)) - rangeStart) * 3, currentMat})
 
-	if m.Texture != nil && w.EmbedImages && len(textureData) > 0 {
-		textureIdx := uint32(len(doc.Textures))
-		imageIdx := uint32(len(doc.Images))
+		for _, r := range ranges {
+			indexView := &gltf.BufferView{
+				Buffer:     0,
+				ByteOffset: indexDataOffset + r.start*4,
+				ByteLength: r.count * 4,
+				Target:     gltf.TargetElementArrayBuffer,
+			}
+			bufferViews = append(bufferViews, indexView)
+			accessors = append(accessors, &gltf.Accessor{
+				BufferView:    gltf.Index(uint32(len(bufferViews) - 1)),
+				ByteOffset:    0,
+				ComponentType: gltf.ComponentUint,
+				Type:          gltf.AccessorScalar,
+				Count:         r.count,
+			})
+		}
 
-		doc.Images = append(doc.Images, &gltf.Image{
-			BufferView: gltf.Index(textureBufferViewIdx),
-			MimeType:   "image/png",
-		})
-
-		doc.Textures = append(doc.Textures, &gltf.Texture{
-			Source: gltf.Index(imageIdx),
-		})
-
-		materialIdx := uint32(0)
-		doc.Materials = append(doc.Materials, &gltf.Material{
-			Name: "textured_material",
-			PBRMetallicRoughness: &gltf.PBRMetallicRoughness{
-				BaseColorTexture: &gltf.TextureInfo{
-					Index: textureIdx,
+		for mi := range m.Materials {
+			mat := &m.Materials[mi]
+			r, g, b, a := mat.Diffuse.RGBA()
+			alpha := float32(a) / 65535.0
+			gltfMat := &gltf.Material{
+				Name: mat.Name,
+				PBRMetallicRoughness: &gltf.PBRMetallicRoughness{
+					BaseColorFactor: &[4]float32{
+						float32(r) / 65535.0,
+						float32(g) / 65535.0,
+						float32(b) / 65535.0,
+						alpha,
+					},
+					MetallicFactor:  gltf.Float(mat.Metalness),
+					RoughnessFactor: gltf.Float(mat.Roughness),
 				},
-				MetallicFactor:  gltf.Float(0.0),
-				RoughnessFactor: gltf.Float(0.5),
-			},
+			}
+			if mi == 0 && m.Texture != nil && w.EmbedImages && len(textureData) > 0 {
+				textureIdx := uint32(len(doc.Textures))
+				imageIdx := uint32(len(doc.Images))
+				doc.Images = append(doc.Images, &gltf.Image{
+					BufferView: gltf.Index(textureBufferViewIdx),
+					MimeType:   "image/png",
+				})
+				doc.Textures = append(doc.Textures, &gltf.Texture{
+					Source: gltf.Index(imageIdx),
+				})
+				gltfMat.PBRMetallicRoughness.BaseColorTexture = &gltf.TextureInfo{
+					Index: textureIdx,
+				}
+			}
+			doc.Materials = append(doc.Materials, gltfMat)
+		}
+
+		indexAccessorOffset := uint32(len(accessors) - len(ranges))
+		primitives := make([]*gltf.Primitive, len(ranges))
+		for i, r := range ranges {
+			prim := &gltf.Primitive{
+				Indices:    gltf.Index(indexAccessorOffset + uint32(i)),
+				Attributes: attributes,
+				Mode:       gltf.PrimitiveTriangles,
+				Material:   gltf.Index(r.matIdx),
+			}
+			primitives[i] = prim
+		}
+		doc.Meshes = []*gltf.Mesh{{Primitives: primitives}}
+	} else {
+		accessors = append(accessors, &gltf.Accessor{
+			BufferView:    gltf.Index(2),
+			ByteOffset:    0,
+			ComponentType: gltf.ComponentUint,
+			Type:          gltf.AccessorScalar,
+			Count:         uint32(len(m.Indices)),
 		})
 
-		primitive.Material = gltf.Index(materialIdx)
-	}
+		primitive := &gltf.Primitive{
+			Indices:    gltf.Index(2),
+			Attributes: attributes,
+			Mode:       gltf.PrimitiveTriangles,
+		}
 
-	doc.Meshes = []*gltf.Mesh{{
-		Primitives: []*gltf.Primitive{primitive},
-	}}
+		if m.Texture != nil && w.EmbedImages && len(textureData) > 0 {
+			textureIdx := uint32(len(doc.Textures))
+			imageIdx := uint32(len(doc.Images))
+			doc.Images = append(doc.Images, &gltf.Image{
+				BufferView: gltf.Index(textureBufferViewIdx),
+				MimeType:   "image/png",
+			})
+			doc.Textures = append(doc.Textures, &gltf.Texture{
+				Source: gltf.Index(imageIdx),
+			})
+			doc.Materials = append(doc.Materials, &gltf.Material{
+				Name: "textured_material",
+				PBRMetallicRoughness: &gltf.PBRMetallicRoughness{
+					BaseColorTexture: &gltf.TextureInfo{
+						Index: textureIdx,
+					},
+					MetallicFactor:  gltf.Float(0.0),
+					RoughnessFactor: gltf.Float(0.5),
+				},
+			})
+			primitive.Material = gltf.Index(0)
+		}
+
+		doc.Meshes = []*gltf.Mesh{{
+			Primitives: []*gltf.Primitive{primitive},
+		}}
+	}
 
 	doc.Nodes = []*gltf.Node{
 		{
@@ -213,7 +306,14 @@ func (w *GLTFWriter) Write(m *mesh.Mesh, path string) error {
 	doc.BufferViews = bufferViews
 	doc.Accessors = accessors
 
-	if w.Binary {
+	shouldBeBinary := w.Binary
+	if strings.HasSuffix(path, ".gltf") {
+		shouldBeBinary = false
+	} else if strings.HasSuffix(path, ".glb") {
+		shouldBeBinary = true
+	}
+
+	if shouldBeBinary {
 		return gltf.SaveBinary(doc, path)
 	}
 

@@ -12,6 +12,35 @@ import (
 	vec3d "github.com/flywave/go3d/float64/vec3"
 )
 
+func (m *Mesh) CalculateUVsFromExtent() {
+	if len(m.Vertices) == 0 {
+		return
+	}
+
+	minX := math.Inf(1)
+	minY := math.Inf(1)
+	maxX := math.Inf(-1)
+	maxY := math.Inf(-1)
+
+	for _, v := range m.Vertices {
+		if v[0] < minX {
+			minX = v[0]
+		}
+		if v[0] > maxX {
+			maxX = v[0]
+		}
+		if v[1] < minY {
+			minY = v[1]
+		}
+		if v[1] > maxY {
+			maxY = v[1]
+		}
+	}
+
+	bounds := vec2d.Rect{Min: vec2d.T{minX, minY}, Max: vec2d.T{maxX, maxY}}
+	m.CalculateUVs(bounds)
+}
+
 type Tile struct {
 	Coord     [3]int
 	Zoom      int
@@ -32,6 +61,8 @@ type Mesh struct {
 	Bounds    vec2d.Rect
 	Srs       geo.Proj
 	TinMesh   interface{}
+
+	MaterialIndices []uint32
 }
 
 type Material struct {
@@ -491,23 +522,6 @@ func (m *Mesh) Merge(other *Mesh) error {
 
 	for i := range other.UVs {
 		m.UVs = append(m.UVs, other.UVs[i])
-	}
-
-	for _, idx := range other.Indices {
-		m.Indices = append(m.Indices, baseVertexIndex+idx)
-	}
-
-	for _, mat := range other.Materials {
-		m.Materials = append(m.Materials, mat)
-	}
-
-	if m.Bounds.Min[0] > other.Bounds.Min[0] || m.Bounds.Min[1] > other.Bounds.Min[1] {
-		m.Bounds.Min[0] = math.Min(m.Bounds.Min[0], other.Bounds.Min[0])
-		m.Bounds.Min[1] = math.Min(m.Bounds.Min[1], other.Bounds.Min[1])
-	}
-	if m.Bounds.Max[0] < other.Bounds.Max[0] || m.Bounds.Max[1] < other.Bounds.Max[1] {
-		m.Bounds.Max[0] = math.Max(m.Bounds.Max[0], other.Bounds.Max[0])
-		m.Bounds.Max[1] = math.Max(m.Bounds.Max[1], other.Bounds.Max[1])
 	}
 
 	for _, idx := range other.Indices {

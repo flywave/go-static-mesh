@@ -260,12 +260,9 @@ func (g *Tingenerator) generateFromDelaunay(points []vec2d.T, elevations []float
 		return nil, fmt.Errorf("not enough vertices for TIN generation")
 	}
 
-	indices := make([]uint32, 0)
-	if len(vertices) > 3 {
-		indices = make([]uint32, 3)
-		indices[0] = 0
-		indices[1] = 1
-		indices[2] = 2
+	indices := make([]uint32, 0, (len(vertices)-2)*3)
+	for i := 1; i < len(vertices)-1; i++ {
+		indices = append(indices, 0, uint32(i), uint32(i+1))
 	}
 
 	minHeight := math.Inf(1)

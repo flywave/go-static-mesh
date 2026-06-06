@@ -9,7 +9,7 @@ import (
 	vec3d "github.com/flywave/go3d/float64/vec3"
 )
 
-func (b *Builder) addGeoDataToMesh(mesh *mesh.Mesh, terrainMesh interface{}, isPrint bool) error {
+func (b *Builder) addGeoDataToMesh(mesh *mesh.Mesh, terrainMesh interface{}) error {
 	if len(b.geoData) == 0 {
 		b.logger.Debug("No geo data to add")
 		return nil
