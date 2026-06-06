@@ -7,12 +7,4 @@ type ProgressCallback interface {
 	OnProgressError(err error)
 }
 
-type DefaultProgressCallback struct{}
 
-func (d *DefaultProgressCallback) OnStageStart(stage string, totalSteps uint64) {}
-
-func (d *DefaultProgressCallback) OnProgress(step, total uint64) {}
-
-func (d *DefaultProgressCallback) OnStageComplete(stage string) {}
-
-func (d *DefaultProgressCallback) OnProgressError(err error) {}

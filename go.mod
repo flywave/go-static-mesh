@@ -12,7 +12,7 @@ require (
 	github.com/flywave/go-geo v0.0.0-20250314091853-e818cb9de299
 	github.com/flywave/go-geoid v0.0.0-20220306024153-21126c4758a2
 	github.com/flywave/go-mapbox v0.0.0-00010101000000-000000000000
-	github.com/flywave/go-mst v0.0.0-20260112101636-2c1059fcfa2a
+	github.com/flywave/go-mst v0.0.0-00010101000000-000000000000
 	github.com/flywave/go-quantized-mesh v0.0.0-20210525134750-cb854922974d
 	github.com/flywave/go-stl v0.0.0-20250818070638-f2c3dee7ad76
 	github.com/flywave/go-tin v0.0.0-20250611104340-f25bca1483ad

@@ -61,32 +61,6 @@ func NewTexturedCloser() *TexturedCloser {
 	}
 }
 
-func (c *TexturedCloser) SetOptions(options *CloseMeshOptions) {
-	c.options = options
-}
-
-func (c *TexturedCloser) GetOptions() *CloseMeshOptions {
-	return c.options
-}
-
-func (c *TexturedCloser) CloseSurfaceMesh(mesh interface{}, thickness float64) (*Mesh, error) {
-	if !c.options.Enabled {
-		return nil, nil
-	}
-
-	c.options.Thickness = thickness
-	return c.closeMeshWithTexture(mesh)
-}
-
-func (c *TexturedCloser) CloseSurfaceMeshWithOptions(mesh interface{}, options *CloseMeshOptions) (*Mesh, error) {
-	if !options.Enabled {
-		return nil, nil
-	}
-
-	c.options = options
-	return c.closeMeshWithTexture(mesh)
-}
-
 func (c *TexturedCloser) closeMeshWithTexture(mesh interface{}) (*Mesh, error) {
 	if mesh == nil {
 		return nil, nil

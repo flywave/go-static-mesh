@@ -471,13 +471,23 @@ func main() {
 		log.Fatalf("创建输出目录失败: %v", err)
 	}
 
-	outputFile := filepath.Join(outputDir, "terrain_textured.glb")
-	fmt.Printf("步骤 9: 保存为 GLB -> %s\n", outputFile)
-
+	glbFile := filepath.Join(outputDir, "terrain_textured.glb")
+	fmt.Printf("步骤 9: 保存为 GLB -> %s\n", glbFile)
 	w := writer.NewGltfWriter()
-	if err := w.Write(terrainMesh, outputFile); err != nil {
-		log.Fatalf("写入失败: %v", err)
+	if err := w.Write(terrainMesh, glbFile); err != nil {
+		log.Fatalf("写入 GLB 失败: %v", err)
 	}
+	stat, _ := os.Stat(glbFile)
+	fmt.Printf("  - GLB: %.2f MB\n", float64(stat.Size())/1024/1024)
+
+	mstFile := filepath.Join(outputDir, "terrain_textured.mst")
+	fmt.Printf("步骤 10: 保存为 MST -> %s\n", mstFile)
+	mw := writer.NewMstWriter()
+	if err := mw.Write(terrainMesh, mstFile); err != nil {
+		log.Fatalf("写入 MST 失败: %v", err)
+	}
+	mstStat, _ := os.Stat(mstFile)
+	fmt.Printf("  - MST: %.2f MB\n", float64(mstStat.Size())/1024/1024)
 
 	fmt.Println()
 	fmt.Println("✓ 地形 + 纹理生成成功！")
@@ -488,10 +498,6 @@ func main() {
 	} else {
 		fmt.Printf("  - 纹理: 无\n")
 	}
-	fmt.Printf("  - 输出文件: %s\n", outputFile)
-
-	stat, _ := os.Stat(outputFile)
-	fmt.Printf("  - 文件大小: %.2f MB\n", float64(stat.Size())/1024/1024)
 
 	fmt.Println()
 	fmt.Println("=== 完成 ===")
