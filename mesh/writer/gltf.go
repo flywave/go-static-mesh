@@ -253,6 +253,7 @@ func (w *GLTFWriter) Write(m *mesh.Mesh, path string) error {
 		}
 		doc.Meshes = []*gltf.Mesh{{Primitives: primitives}}
 	} else {
+		indexAccessorIdx := uint32(len(accessors))
 		accessors = append(accessors, &gltf.Accessor{
 			BufferView:    gltf.Index(2),
 			ByteOffset:    0,
@@ -262,7 +263,7 @@ func (w *GLTFWriter) Write(m *mesh.Mesh, path string) error {
 		})
 
 		primitive := &gltf.Primitive{
-			Indices:    gltf.Index(2),
+			Indices:    gltf.Index(indexAccessorIdx),
 			Attributes: attributes,
 			Mode:       gltf.PrimitiveTriangles,
 		}
