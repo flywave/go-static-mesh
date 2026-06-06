@@ -194,16 +194,6 @@ func TestBuilderSetBaseElevation(t *testing.T) {
 	}
 }
 
-func TestBuilderSetExtrudeGeoData(t *testing.T) {
-	builder := NewBuilder()
-
-	builder.SetExtrudeGeoData(true, 10.0)
-
-	if !builder.extrudeGeoData || builder.geoDataHeight != 10.0 {
-		t.Error("extrude geo data parameters not set correctly")
-	}
-}
-
 func TestBuilderSetTileErrorHandler(t *testing.T) {
 	builder := NewBuilder()
 	handler := TileErrorHandler{

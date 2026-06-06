@@ -68,6 +68,7 @@ type Mesh struct {
 type Material struct {
 	Name      string
 	Diffuse   color.Color
+	Texture   image.Image
 	Specular  color.Color
 	Shininess float32
 	Alpha     float32

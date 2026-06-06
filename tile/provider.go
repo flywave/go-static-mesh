@@ -1,14 +1,17 @@
 package tile
 
 import (
-	draw "github.com/flywave/go-static-mesh/draw"
+	"image"
 
 	"github.com/flywave/go-geo"
 	vec2d "github.com/flywave/go3d/float64/vec2"
 )
 
 type TileProvider interface {
-	draw.TileProvider
+	Attribution() string
+	Grid() *geo.TileGrid
+	Bounds() vec2d.Rect
+	Srs() geo.Proj
 }
 
 type TileFetcher interface {
@@ -17,7 +20,7 @@ type TileFetcher interface {
 
 type ImageTileProvider interface {
 	TileProvider
-	draw.ImageTileProvider
+	GetImageTile(coord [3]int) (image.Image, error)
 }
 
 type TileProviderMode int

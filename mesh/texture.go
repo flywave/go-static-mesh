@@ -8,7 +8,7 @@ import (
 
 	"github.com/flywave/gg"
 	"github.com/flywave/go-geo"
-	drawpkg "github.com/flywave/go-static-mesh/draw"
+	tile "github.com/flywave/go-static-mesh/tile"
 	vec2d "github.com/flywave/go3d/float64/vec2"
 	vec3d "github.com/flywave/go3d/float64/vec3"
 )
@@ -16,11 +16,11 @@ import (
 type TextureSource struct {
 	bounds   vec2d.Rect
 	srs      geo.Proj
-	provider drawpkg.ImageTileProvider
+	provider tile.ImageTileProvider
 	zoom     int
 }
 
-func NewTextureSource(bounds vec2d.Rect, srs geo.Proj, provider drawpkg.ImageTileProvider) *TextureSource {
+func NewTextureSource(bounds vec2d.Rect, srs geo.Proj, provider tile.ImageTileProvider) *TextureSource {
 	return &TextureSource{
 		bounds:   bounds,
 		srs:      srs,
@@ -664,15 +664,8 @@ func clampFloat(val, min, max float64) float64 {
 	return val
 }
 
-func (g *TextureGenerator) DrawGeoObjects(img image.Image, objects []drawpkg.MapObject, bounds vec2d.Rect, srs geo.Proj) image.Image {
-	if len(objects) == 0 {
-		return img
-	}
-
-	dc := gg.NewContextForImage(img)
-	dc.DrawImage(img, 0, 0)
-
-	return dc.Image()
+func (g *TextureGenerator) DrawGeoObjects(img image.Image, objects interface{}, bounds vec2d.Rect, srs geo.Proj) image.Image {
+	return img
 }
 
 func (g *TextureGenerator) CalculateUVs(vertices []vec3d.T, bounds vec2d.Rect) []vec2d.T {

@@ -114,23 +114,6 @@ func (w *GLTFWriter) Write(m *mesh.Mesh, path string) error {
 		uvBufferViewIdx = uint32(len(bufferViews) - 1)
 	}
 
-	textureBufferViewIdx := uint32(len(bufferViews))
-	var textureData []byte
-	if m.Texture != nil && w.EmbedImages {
-		var err error
-		textureData, _, err = w.encodeTexture(m.Texture)
-		if err == nil && len(textureData) > 0 {
-			textureView := &gltf.BufferView{
-				Buffer:     0,
-				ByteOffset: currentOffset,
-				ByteLength: uint32(len(textureData)),
-			}
-			bufferViews = append(bufferViews, textureView)
-			allBufferData = append(allBufferData, textureData...)
-			currentOffset += uint32(len(textureData))
-		}
-	}
-
 	attributes := map[string]uint32{
 		"POSITION": 0,
 		"NORMAL":   1,
@@ -200,6 +183,7 @@ func (w *GLTFWriter) Write(m *mesh.Mesh, path string) error {
 			})
 		}
 
+		encodedTextures := make(map[image.Image]uint32)
 		for mi := range m.Materials {
 			mat := &m.Materials[mi]
 			r, g, b, a := mat.Diffuse.RGBA()
@@ -217,18 +201,40 @@ func (w *GLTFWriter) Write(m *mesh.Mesh, path string) error {
 					RoughnessFactor: gltf.Float(mat.Roughness),
 				},
 			}
-			if mi == 0 && m.Texture != nil && w.EmbedImages && len(textureData) > 0 {
-				textureIdx := uint32(len(doc.Textures))
-				imageIdx := uint32(len(doc.Images))
-				doc.Images = append(doc.Images, &gltf.Image{
-					BufferView: gltf.Index(textureBufferViewIdx),
-					MimeType:   "image/png",
-				})
-				doc.Textures = append(doc.Textures, &gltf.Texture{
-					Source: gltf.Index(imageIdx),
-				})
-				gltfMat.PBRMetallicRoughness.BaseColorTexture = &gltf.TextureInfo{
-					Index: textureIdx,
+			texImage := mat.Texture
+			if texImage == nil && mi == 0 {
+				texImage = m.Texture
+			}
+			if texImage != nil && w.EmbedImages {
+				textureIdx, exists := encodedTextures[texImage]
+				if !exists {
+					texData, _, err := w.encodeTexture(texImage)
+					if err == nil && len(texData) > 0 {
+						texView := &gltf.BufferView{
+							Buffer:     0,
+							ByteOffset: currentOffset,
+							ByteLength: uint32(len(texData)),
+						}
+						bufferViews = append(bufferViews, texView)
+						allBufferData = append(allBufferData, texData...)
+						currentOffset += uint32(len(texData))
+
+						textureIdx = uint32(len(doc.Textures))
+						imageIdx := uint32(len(doc.Images))
+						doc.Images = append(doc.Images, &gltf.Image{
+							BufferView: gltf.Index(uint32(len(bufferViews) - 1)),
+							MimeType:   "image/png",
+						})
+						doc.Textures = append(doc.Textures, &gltf.Texture{
+							Source: gltf.Index(imageIdx),
+						})
+						encodedTextures[texImage] = textureIdx
+					}
+				}
+				if len(doc.Textures) > int(textureIdx) {
+					gltfMat.PBRMetallicRoughness.BaseColorTexture = &gltf.TextureInfo{
+						Index: textureIdx,
+					}
 				}
 			}
 			doc.Materials = append(doc.Materials, gltfMat)
@@ -261,27 +267,39 @@ func (w *GLTFWriter) Write(m *mesh.Mesh, path string) error {
 			Mode:       gltf.PrimitiveTriangles,
 		}
 
-		if m.Texture != nil && w.EmbedImages && len(textureData) > 0 {
-			textureIdx := uint32(len(doc.Textures))
-			imageIdx := uint32(len(doc.Images))
-			doc.Images = append(doc.Images, &gltf.Image{
-				BufferView: gltf.Index(textureBufferViewIdx),
-				MimeType:   "image/png",
-			})
-			doc.Textures = append(doc.Textures, &gltf.Texture{
-				Source: gltf.Index(imageIdx),
-			})
-			doc.Materials = append(doc.Materials, &gltf.Material{
-				Name: "textured_material",
-				PBRMetallicRoughness: &gltf.PBRMetallicRoughness{
-					BaseColorTexture: &gltf.TextureInfo{
-						Index: textureIdx,
+		if m.Texture != nil && w.EmbedImages {
+			texData, _, err := w.encodeTexture(m.Texture)
+			if err == nil && len(texData) > 0 {
+				texView := &gltf.BufferView{
+					Buffer:     0,
+					ByteOffset: currentOffset,
+					ByteLength: uint32(len(texData)),
+				}
+				bufferViews = append(bufferViews, texView)
+				allBufferData = append(allBufferData, texData...)
+				currentOffset += uint32(len(texData))
+
+				textureIdx := uint32(len(doc.Textures))
+				imageIdx := uint32(len(doc.Images))
+				doc.Images = append(doc.Images, &gltf.Image{
+					BufferView: gltf.Index(uint32(len(bufferViews) - 1)),
+					MimeType:   "image/png",
+				})
+				doc.Textures = append(doc.Textures, &gltf.Texture{
+					Source: gltf.Index(imageIdx),
+				})
+				doc.Materials = append(doc.Materials, &gltf.Material{
+					Name: "textured_material",
+					PBRMetallicRoughness: &gltf.PBRMetallicRoughness{
+						BaseColorTexture: &gltf.TextureInfo{
+							Index: textureIdx,
+						},
+						MetallicFactor:  gltf.Float(0.0),
+						RoughnessFactor: gltf.Float(0.5),
 					},
-					MetallicFactor:  gltf.Float(0.0),
-					RoughnessFactor: gltf.Float(0.5),
-				},
-			})
-			primitive.Material = gltf.Index(0)
+				})
+				primitive.Material = gltf.Index(0)
+			}
 		}
 
 		doc.Meshes = []*gltf.Mesh{{

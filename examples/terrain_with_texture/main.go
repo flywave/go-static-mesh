@@ -460,7 +460,7 @@ func main() {
 	b.SetCloseMesh(true, 100.0)
 
 	fmt.Println()
-	fmt.Println("步骤 7: 构建地形网格")
+	fmt.Println("步骤 8: 构建地形网格")
 	terrainMesh, err := b.BuildForDisplay()
 	if err != nil {
 		log.Fatalf("构建失败: %v", err)
@@ -472,7 +472,7 @@ func main() {
 	}
 
 	outputFile := filepath.Join(outputDir, "terrain_textured.glb")
-	fmt.Printf("步骤 8: 保存为 GLB -> %s\n", outputFile)
+	fmt.Printf("步骤 9: 保存为 GLB -> %s\n", outputFile)
 
 	w := writer.NewGltfWriter()
 	if err := w.Write(terrainMesh, outputFile); err != nil {

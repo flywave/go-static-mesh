@@ -8,7 +8,6 @@ import (
 	"time"
 
 	"github.com/flywave/go-geo"
-	draw "github.com/flywave/go-static-mesh/draw"
 	"github.com/flywave/go-static-mesh/mesh"
 	tile "github.com/flywave/go-static-mesh/tile"
 	vec2d "github.com/flywave/go3d/float64/vec2"
@@ -29,7 +28,6 @@ type Builder struct {
 	tinMeshProvider      interface{}
 	imageryProvider      interface{}
 	model3DProvider      interface{}
-	geoData              []draw.MapObject
 	bounds               vec2d.Rect
 	srs                  geo.Proj
 	zoom                 *int
@@ -38,8 +36,6 @@ type Builder struct {
 	resolution           float64
 	verticalExaggeration float64
 	baseElevation        float64
-	extrudeGeoData       bool
-	geoDataHeight        float64
 	closeMesh            bool
 	baseThickness        float64
 	tileErrorHandler     TileErrorHandler
@@ -52,7 +48,6 @@ type Builder struct {
 
 func NewBuilder() *Builder {
 	return &Builder{
-		geoData:              []draw.MapObject{},
 		autoZoomMin:          13,
 		autoZoomMax:          17,
 		resolution:           1.0,
@@ -89,11 +84,6 @@ func (b *Builder) AddImageryProvider(provider interface{}) {
 	b.logger.Debug("Imagery provider added")
 }
 
-func (b *Builder) AddGeoData(obj draw.MapObject) {
-	b.geoData = append(b.geoData, obj)
-	b.logger.Debug("Geo data added", "total", len(b.geoData))
-}
-
 func (b *Builder) SetBounds(bounds vec2d.Rect, srs geo.Proj) {
 	b.bounds = bounds
 	b.srs = srs
@@ -115,12 +105,6 @@ func (b *Builder) SetVerticalExaggeration(scale float64) {
 
 func (b *Builder) SetBaseElevation(elevation float64) {
 	b.baseElevation = elevation
-}
-
-func (b *Builder) SetExtrudeGeoData(extrude bool, height float64) {
-	b.extrudeGeoData = extrude
-	b.geoDataHeight = height
-	b.logger.Debug("Geo data extrusion configured", "extrude", extrude, "height", height)
 }
 
 func (b *Builder) SetCloseMesh(close bool, thickness float64) {
@@ -249,11 +233,6 @@ func (b *Builder) resolveBounds() {
 			}
 		}
 	}
-}
-
-func (b *Builder) AddPath(path *draw.Path) {
-	b.geoData = append(b.geoData, path)
-	b.logger.Debug("Path added", "points", len(path.Positions), "total", len(b.geoData))
 }
 
 func (b *Builder) SetTexture(texture *mesh.Mesh) {
@@ -404,33 +383,6 @@ func (b *Builder) build(isPrint bool) (*mesh.Mesh, error) {
 
 	b.reportProgress(3, 4)
 
-	billboardsMesh, err := b.processBillboards(resultMesh)
-	if err != nil {
-		b.logger.Error("Failed to process billboards", "error", err)
-		return nil, &mesh.BuildError{
-			Stage: "generation",
-			Step:  "billboards",
-			Err:   err,
-		}
-	}
-
-	if billboardsMesh != nil && len(billboardsMesh.Vertices) > 0 {
-		b.logger.Info("Billboards processed successfully", "vertices", len(billboardsMesh.Vertices))
-	}
-
-	err = b.addGeoDataToMesh(resultMesh, tinMesh)
-	if err != nil {
-		b.logger.Error("Failed to add geo data to mesh", "error", err)
-		b.reportProgressError(err)
-		return nil, &mesh.BuildError{
-			Stage: "generation",
-			Step:  "geo_data",
-			Err:   err,
-		}
-	}
-
-	b.logger.Info("Geo data added successfully", "objects", len(b.geoData))
-
 	b.reportProgress(4, 4)
 
 	if b.imageryProvider != nil {
@@ -450,12 +402,13 @@ func (b *Builder) build(isPrint bool) (*mesh.Mesh, error) {
 	if b.textureMesh != nil && b.textureMesh.Texture != nil {
 		b.logger.Info("Applying texture from texture mesh")
 		resultMesh.Texture = b.textureMesh.Texture
-		if len(resultMesh.UVs) == 0 && len(resultMesh.Vertices) > 0 {
+		if len(resultMesh.Vertices) > 0 {
 			resultMesh.CalculateUVsFromExtent()
 			b.logger.Debug("UVs calculated for texture", "uvs", len(resultMesh.UVs))
 		}
 	}
 
+	meshForReturn := resultMesh
 	if b.closeMesh && b.closeMeshOptions != nil && b.closeMeshOptions.Enabled {
 		b.logger.Info("Closing unified mesh for printing", "thickness", b.baseThickness)
 
@@ -480,13 +433,12 @@ func (b *Builder) build(isPrint bool) (*mesh.Mesh, error) {
 			}
 		}
 		b.logger.Info("Unified mesh closed successfully")
-		b.reportStageComplete("generation")
-		return closedMesh, nil
+		meshForReturn = closedMesh
 	}
 
-	b.logger.Info("Mesh build completed successfully", "vertices", len(resultMesh.Vertices), "triangles", resultMesh.TriangleCount())
+	b.logger.Info("Mesh build completed successfully", "vertices", len(meshForReturn.Vertices), "triangles", meshForReturn.TriangleCount())
 	b.reportStageComplete("generation")
-	return resultMesh, nil
+	return meshForReturn, nil
 }
 
 func (b *Builder) GenerateTexture() (*mesh.Mesh, error) {
