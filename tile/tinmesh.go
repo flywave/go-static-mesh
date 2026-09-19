@@ -421,14 +421,23 @@ func (p *CesiumQuantizedMeshProvider) GetNormal(lng, lat float64) vec3d.T {
 	return normal
 }
 
+func (p *CesiumQuantizedMeshProvider) SetBounds(bounds vec2d.Rect, srs geo.Proj) {
+	p.bounds = bounds
+	if srs != nil {
+		p.srs = srs
+	}
+}
+
 func (p *CesiumQuantizedMeshProvider) GetMesh() (*TinMesh, error) {
 	zoom := 12
 	coords := p.calculateTileCoordsForBounds(zoom, p.bounds)
 
 	var merged *TinMesh
+	var lastErr error
 	for _, coord := range coords {
 		tileMesh, err := p.GetMeshTile(coord)
 		if err != nil {
+			lastErr = err
 			continue
 		}
 		if merged == nil {
@@ -436,6 +445,15 @@ func (p *CesiumQuantizedMeshProvider) GetMesh() (*TinMesh, error) {
 		} else {
 			merged = p.mergeMeshes(merged, tileMesh)
 		}
+	}
+
+	// 之前这里把所有瓦片错误吞掉后返回 (nil, nil)，调用方只能看到
+	// ErrNoTINGenerated，无法知道是 URL 错误、404 还是解码失败
+	if merged == nil {
+		if lastErr != nil {
+			return nil, fmt.Errorf("no TIN tile fetched from %q (%d tiles requested): %w", p.url, len(coords), lastErr)
+		}
+		return nil, fmt.Errorf("no TIN tile fetched from %q (%d tiles requested)", p.url, len(coords))
 	}
 
 	return merged, nil

@@ -142,8 +142,19 @@ func (b *Builder) SetResolution(resolution float64) {
 }
 
 func (b *Builder) SetCloseMeshOptions(options *mesh.CloseMeshOptions) {
+	const minThickness = 2.0
+
+	if options != nil && options.Enabled && options.Thickness < minThickness {
+		b.logger.Warn("Thickness too small, adjusting to minimum",
+			"requested", options.Thickness, "minimum", minThickness)
+		options.Thickness = minThickness
+	}
+
 	b.closeMeshOptions = options
 	b.closeMesh = options != nil && options.Enabled
+	if options != nil {
+		b.baseThickness = options.Thickness
+	}
 	b.logger.Debug("Close mesh options set", "enabled", b.closeMesh, "thickness", b.baseThickness)
 }
 
@@ -305,13 +316,17 @@ func (b *Builder) build(isPrint bool) (*mesh.Mesh, error) {
 		}
 		b.logger.Info("TIN generated successfully from raster")
 	} else if b.tinMeshProvider != nil {
+		// 具体签名是 GetMesh() (*tile.TinMesh, error)：此前断言的是
+		// GetMesh() (interface{}, error)，Go 不支持协变，任何实现都断言失败，
+		// TIN 输入永远走 ErrProviderNotSupported
 		type providerWithMesh interface {
-			GetMesh() (interface{}, error)
+			GetMesh() (*tile.TinMesh, error)
 		}
 		provider, ok := b.tinMeshProvider.(providerWithMesh)
 		if ok {
 			b.logger.Info("Getting TIN mesh from provider")
-			tinMesh, err = provider.GetMesh()
+			var tinResult *tile.TinMesh
+			tinResult, err = provider.GetMesh()
 			if err != nil {
 				b.logger.Error("Failed to get TIN mesh from provider", "error", err)
 				b.reportProgressError(err)
@@ -321,6 +336,18 @@ func (b *Builder) build(isPrint bool) (*mesh.Mesh, error) {
 					Err:   err,
 				}
 			}
+			// 返回 typed nil 时接口非 nil，直接转换会在 nil 指针上取字段
+			if tinResult == nil {
+				err = mesh.ErrNoTINGenerated
+				b.logger.Error("TIN mesh provider returned an empty mesh")
+				b.reportProgressError(err)
+				return nil, &mesh.BuildError{
+					Stage: "generation",
+					Step:  "tin_validation",
+					Err:   err,
+				}
+			}
+			tinMesh = tinResult
 			b.logger.Info("TIN mesh retrieved successfully")
 		} else {
 			err := mesh.ErrProviderNotSupported
@@ -419,12 +446,27 @@ func (b *Builder) build(isPrint bool) (*mesh.Mesh, error) {
 			}
 		}
 
-		unifiedBaseHeight := globalMinHeight - b.baseThickness
+		// UseMinHeightAsBase=false 时底面高度以 z=0 为基准，而不是地形最低点
+		unifiedBaseHeight := -b.baseThickness
+		if b.closeMeshOptions.UseMinHeightAsBase {
+			unifiedBaseHeight = globalMinHeight - b.baseThickness
+		}
 
 		closer := mesh.NewTexturedCloser()
+		closer.SetOptions(b.closeMeshOptions)
 		closedMesh, err := closer.CloseUnifiedMesh(resultMesh, unifiedBaseHeight)
 		if err != nil {
 			b.logger.Error("Failed to close unified mesh", "error", err)
+			b.reportProgressError(err)
+			return nil, &mesh.BuildError{
+				Stage: "generation",
+				Step:  "mesh_closing",
+				Err:   err,
+			}
+		}
+		if closedMesh == nil {
+			err := mesh.ErrNoTINGenerated
+			b.logger.Error("Mesh closing produced no geometry")
 			b.reportProgressError(err)
 			return nil, &mesh.BuildError{
 				Stage: "generation",

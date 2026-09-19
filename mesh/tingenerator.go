@@ -3,6 +3,7 @@ package mesh
 import (
 	"fmt"
 	"math"
+	"reflect"
 
 	"github.com/flywave/go-geo"
 	"github.com/flywave/go-geoid"
@@ -72,6 +73,19 @@ func NewTINGenerator() *Tingenerator {
 	}
 }
 
+// srcProjOrNil 过滤掉 geo.NewProj 失败时产生的"类型非空、值为空"接口：
+// 传给底层坐标转换会在取字段时 panic。
+func srcProjOrNil(p geo.Proj) geo.Proj {
+	if p == nil {
+		return nil
+	}
+	v := reflect.ValueOf(p)
+	if v.Kind() == reflect.Ptr && v.IsNil() {
+		return nil
+	}
+	return p
+}
+
 func (g *Tingenerator) SetMaxError(error float64) {
 	g.maxError = error
 }
@@ -127,7 +141,7 @@ func (g *Tingenerator) GenerateFromRaster(grid interface{}) (interface{}, error)
 	r.SetXYPos(eg.GetMinX(), eg.GetMinY(), eg.GetCellSize())
 
 	config := &tin.GeoConfig{
-		SrcProj: g.srcProj,
+		SrcProj: srcProjOrNil(g.srcProj),
 		Datum:   g.datum,
 		Offset:  g.offset,
 	}
@@ -206,7 +220,21 @@ func (g *Tingenerator) convertTinMesh(zmesh *tin.ZemlyaMesh, tmesh *tin.Mesh, gr
 	centerLon := (bounds.Min[0] + bounds.Max[0]) / 2.0
 	centerLat := (bounds.Min[1] + bounds.Max[1]) / 2.0
 
-	scale := 111319.5
+	// 局部坐标的单位换算：经纬度网格要乘每度米数，投影网格本身已是米
+	srs := srcProjOrNil(g.srcProj)
+	type gridWithSrs interface {
+		GetSrs() geo.Proj
+	}
+	if gs, ok := grid.(gridWithSrs); ok {
+		if gridSrs := srcProjOrNil(gs.GetSrs()); gridSrs != nil {
+			srs = gridSrs
+		}
+	}
+
+	scale := 1.0
+	if srs == nil || srs.IsLatLong() {
+		scale = 111319.5
+	}
 
 	vertices := make([]vec3d.T, len(tmesh.Vertices))
 
@@ -244,7 +272,7 @@ func (g *Tingenerator) convertTinMesh(zmesh *tin.ZemlyaMesh, tmesh *tin.Mesh, gr
 		EdgeIndices: nil,
 		MinHeight:   minHeight,
 		Bounds:      bounds,
-		Srs:         g.srcProj,
+		Srs:         srs,
 	}
 
 	return wrapper, nil

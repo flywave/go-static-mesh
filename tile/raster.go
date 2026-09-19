@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"io"
 	"os"
+	"reflect"
 
 	gdal "github.com/flywave/flywave-gdal"
 	"github.com/flywave/go-cog"
@@ -21,6 +22,19 @@ type ElevationGrid struct {
 	NoData   float64
 	Bounds   vec2d.Rect
 	Srs      geo.Proj
+}
+
+// usableProj 判断 Proj 是否为可用实现。
+// geo.NewProj 失败时返回的是"类型非空、值为空"的接口，直接调用方法会 panic。
+func usableProj(p geo.Proj) bool {
+	if p == nil {
+		return false
+	}
+	v := reflect.ValueOf(p)
+	if v.Kind() == reflect.Ptr {
+		return !v.IsNil()
+	}
+	return true
 }
 
 func (g *ElevationGrid) GetWidth() int {
@@ -49,6 +63,10 @@ func (g *ElevationGrid) GetCellSize() float64 {
 
 func (g *ElevationGrid) GetNoData() float64 {
 	return g.NoData
+}
+
+func (g *ElevationGrid) GetSrs() geo.Proj {
+	return g.Srs
 }
 
 func (g *ElevationGrid) GetElevation(x, y float64) float64 {
@@ -238,6 +256,18 @@ func NewGeoTIFFRasterProvider(filename string) (*GeoTIFFRasterProvider, error) {
 	}
 
 	p.srs = geo.NewProj(4326)
+	// 数据集自身的投影：硬编码 4326 会把 Pseudo-Mercator 的 DEM 当成经纬度，
+	// 局部坐标的度→米换算与网格 SRS 都会失真。
+	// geo.NewProj 不能直接吃 GDAL 的 WKT（失败时返回的是"类型非空、值为空"的接口），
+	// 先转 proj4 再构造。
+	if wkt := ds.Projection(); wkt != "" {
+		sr := gdal.CreateSpatialReference(wkt)
+		if proj4, err := sr.ToProj4(); err == nil && proj4 != "" {
+			if proj := geo.NewProj(proj4); usableProj(proj) {
+				p.srs = proj
+			}
+		}
+	}
 
 	shape := ds.Shape()
 	tileSize := [2]uint32{uint32(shape[0]), uint32(shape[1])}

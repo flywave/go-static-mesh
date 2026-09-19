@@ -1,7 +1,6 @@
 package mesh
 
 import (
-	"fmt"
 	"image"
 	"image/color"
 
@@ -61,79 +60,11 @@ func NewTexturedCloser() *TexturedCloser {
 	}
 }
 
-func (c *TexturedCloser) closeMeshWithTexture(mesh interface{}) (*Mesh, error) {
-	if mesh == nil {
-		return nil, nil
+func (c *TexturedCloser) SetOptions(opts *CloseMeshOptions) {
+	if opts == nil {
+		opts = NewDefaultCloseMeshOptions()
 	}
-
-	type meshWithVertices interface {
-		GetVertices() []vec3d.T
-		GetIndices() []uint32
-		GetMinHeight() float64
-		GetBounds() vec2d.Rect
-	}
-
-	m, ok := mesh.(meshWithVertices)
-	if !ok {
-		return nil, fmt.Errorf("mesh does not implement required interface")
-	}
-
-	vertices := m.GetVertices()
-	indices := m.GetIndices()
-	minHeight := m.GetMinHeight()
-	bounds := m.GetBounds()
-
-	if len(vertices) == 0 {
-		return nil, nil
-	}
-
-	var baseHeight float64
-	if c.options.UseMinHeightAsBase {
-		baseHeight = minHeight - c.options.Thickness
-	} else {
-		baseHeight = -c.options.Thickness
-	}
-
-	newVertices := make([]vec3d.T, len(vertices)*2)
-	copy(newVertices, vertices)
-
-	for i := 0; i < len(vertices); i++ {
-		newVertices[len(vertices)+i] = vec3d.T{
-			vertices[i][0],
-			vertices[i][1],
-			baseHeight,
-		}
-	}
-
-	newIndices := make([]uint32, len(indices)*2)
-	copy(newIndices, indices)
-
-	offset := uint32(len(vertices))
-
-	for i := 0; i < len(indices); i += 3 {
-		idx := len(indices) + i
-		newIndices[idx+0] = indices[i+2] + offset
-		newIndices[idx+1] = indices[i+1] + offset
-		newIndices[idx+2] = indices[i+0] + offset
-	}
-
-	result := &Mesh{
-		Vertices: newVertices,
-		Indices:  newIndices,
-	}
-
-	if c.options.BottomTextureImage != nil || c.options.BottomColor != nil {
-		result.Texture = c.options.BottomTextureImage
-		result.UVs = c.calculateBottomUVs(newVertices, bounds, c.options.BottomTextureTilingU, c.options.BottomTextureTilingV)
-		result.Materials = []Material{*NewMaterial()}
-		if c.options.BottomColor != nil {
-			result.Materials[0].Diffuse = c.options.BottomColor
-		}
-	}
-
-	result.CalculateNormals()
-
-	return result, nil
+	c.options = opts
 }
 
 func (c *TexturedCloser) buildSideWalls(indices []uint32, offset uint32) []uint32 {
@@ -200,6 +131,9 @@ func (c *TexturedCloser) calculateBottomUVs(vertices []vec3d.T, bounds vec2d.Rec
 	return uvs
 }
 
+// CloseUnifiedMesh 由顶面复制出底面并沿边界补齐侧墙，得到封闭实体。
+// 底面顶点是独立副本，因此底部可以有自己的纹理与 UV；
+// 侧墙复用顶/底面顶点（每个顶点只有一组 UV），因此侧面只能表达颜色，不能表达独立纹理。
 func (c *TexturedCloser) CloseUnifiedMesh(mesh *Mesh, baseHeight float64) (*Mesh, error) {
 	if mesh == nil {
 		return nil, nil
@@ -226,8 +160,9 @@ func (c *TexturedCloser) CloseUnifiedMesh(mesh *Mesh, baseHeight float64) (*Mesh
 		}
 	}
 
-	bottomVertices := make([]vec3d.T, len(vertices))
-	for i := 0; i < len(vertices); i++ {
+	vertexCount := len(vertices)
+	bottomVertices := make([]vec3d.T, vertexCount)
+	for i := 0; i < vertexCount; i++ {
 		bottomVertices[i] = vec3d.T{
 			vertices[i][0],
 			vertices[i][1],
@@ -235,73 +170,81 @@ func (c *TexturedCloser) CloseUnifiedMesh(mesh *Mesh, baseHeight float64) (*Mesh
 		}
 	}
 
-	newVertices := make([]vec3d.T, len(vertices)*2)
-	copy(newVertices, vertices)
-	copy(newVertices[len(vertices):], bottomVertices)
+	newVertices := make([]vec3d.T, 0, vertexCount*2)
+	newVertices = append(newVertices, vertices...)
+	newVertices = append(newVertices, bottomVertices...)
 
-	newIndices := make([]uint32, len(indices)*2)
-	copy(newIndices, indices)
+	uvs := make([]vec2d.T, 0, vertexCount*2)
+	if len(mesh.UVs) == vertexCount {
+		uvs = append(uvs, mesh.UVs...)
+	} else {
+		uvs = append(uvs, make([]vec2d.T, vertexCount)...)
+	}
+	uvs = append(uvs, c.calculateBottomUVs(bottomVertices, mesh.Bounds,
+		c.options.BottomTextureTilingU, c.options.BottomTextureTilingV)...)
 
-	offset := uint32(len(vertices))
+	newIndices := make([]uint32, 0, len(indices)*2)
+	materialIndices := make([]uint32, 0, len(indices)/3*2)
 
+	// 材质槽：顶面固定 0，底面/侧面按需追加
+	materials := []Material{*NewMaterial()}
+	if mesh.Texture != nil {
+		materials[0].Diffuse = color.RGBA{255, 255, 255, 255}
+	}
+
+	bottomMaterial := uint32(0)
+	if c.options.ApplyToBottom {
+		material := *NewMaterial()
+		material.Name = "bottom"
+		if c.options.BottomColor != nil {
+			material.Diffuse = c.options.BottomColor
+		}
+		material.Texture = c.options.BottomTextureImage
+		materials = append(materials, material)
+		bottomMaterial = uint32(len(materials) - 1)
+	}
+
+	sideMaterial := uint32(0)
+	if c.options.ApplyToSides {
+		sideColor := color.RGBA{160, 130, 90, 255}
+		if c.options.SideColor != nil {
+			if c, ok := c.options.SideColor.(color.RGBA); ok {
+				sideColor = c
+			}
+		}
+		materials = append(materials, *NewPBRMaterial("side", sideColor, 0.6, 0.8))
+		sideMaterial = uint32(len(materials) - 1)
+	}
+
+	// 顶面沿用原始索引
+	newIndices = append(newIndices, indices...)
+	materialIndices = append(materialIndices, make([]uint32, len(indices)/3)...)
+
+	// 底面：镜像顶面并反转绕序
+	offset := uint32(vertexCount)
 	for i := 0; i < len(indices); i += 3 {
-		idx := len(indices) + i
-		newIndices[idx+0] = indices[i+2] + offset
-		newIndices[idx+1] = indices[i+1] + offset
-		newIndices[idx+2] = indices[i+0] + offset
+		newIndices = append(newIndices,
+			indices[i+2]+offset,
+			indices[i+1]+offset,
+			indices[i+0]+offset)
+		materialIndices = append(materialIndices, bottomMaterial)
 	}
 
 	sideIndices := c.buildSideWalls(indices, offset)
 	newIndices = append(newIndices, sideIndices...)
-
-	topTriCount := len(indices) / 3
-	bottomTriCount := topTriCount
-	sideTriCount := len(sideIndices) / 3
+	for i := 0; i < len(sideIndices)/3; i++ {
+		materialIndices = append(materialIndices, sideMaterial)
+	}
 
 	result := &Mesh{
-		Vertices: newVertices,
-		Indices:  newIndices,
-		Bounds:   mesh.Bounds,
-		Srs:      mesh.Srs,
-		Texture:  mesh.Texture,
-	}
-
-	earthColor := color.RGBA{160, 130, 90, 255}
-	if c.options.SideColor != nil {
-		if c, ok := c.options.SideColor.(color.RGBA); ok {
-			earthColor = c
-		}
-	}
-
-	result.Materials = []Material{
-		*NewMaterial(),
-		*NewPBRMaterial("earth", earthColor, 0.6, 0.8),
-	}
-	if mesh.Texture != nil {
-		result.Materials[0].Diffuse = color.RGBA{255, 255, 255, 255}
-	}
-
-	materialIndices := make([]uint32, topTriCount+bottomTriCount+sideTriCount)
-	for i := 0; i < topTriCount; i++ {
-		materialIndices[i] = 0
-	}
-	for i := topTriCount; i < topTriCount+bottomTriCount+sideTriCount; i++ {
-		materialIndices[i] = 1
-	}
-	result.MaterialIndices = materialIndices
-
-	if len(mesh.UVs) > 0 {
-		result.UVs = make([]vec2d.T, len(newVertices))
-		copy(result.UVs, mesh.UVs)
-		bottomUVs := c.calculateBottomUVs(bottomVertices, mesh.Bounds,
-			c.options.BottomTextureTilingU,
-			c.options.BottomTextureTilingV)
-		copy(result.UVs[len(vertices):], bottomUVs)
-	} else if c.options.BottomTextureImage != nil || c.options.BottomColor != nil {
-		result.Texture = c.options.BottomTextureImage
-		result.UVs = c.calculateBottomUVs(newVertices, mesh.Bounds,
-			c.options.BottomTextureTilingU,
-			c.options.BottomTextureTilingV)
+		Vertices:        newVertices,
+		Indices:         newIndices,
+		UVs:             uvs,
+		Materials:       materials,
+		MaterialIndices: materialIndices,
+		Bounds:          mesh.Bounds,
+		Srs:             mesh.Srs,
+		Texture:         mesh.Texture,
 	}
 
 	result.CalculateNormals()
